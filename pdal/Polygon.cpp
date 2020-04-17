@@ -104,7 +104,7 @@ void Polygon::removeSmallRings(double tolerance)
     if (t == wkbPolygon || t == wkbPolygon25D)
     {
         if (area() < tolerance)
-            m_geom.reset();
+            m_geom.reset(new OGRPolygon());
     }
     else if (t == wkbMultiPolygon || t == wkbMultiPolygon25D)
     {
