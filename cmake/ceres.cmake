@@ -1,0 +1,8 @@
+find_package(Ceres REQUIRED)
+set_package_properties(Ceres PROPERTIES TYPE REQUIRED PURPOSE "Provide least-squares solver for trajectory estimation")
+if (Ceres_FOUND)
+    mark_as_advanced(CLEAR CERES_INCLUDE_DIRS)
+    mark_as_advanced(CLEAR CERES_LIBRARIES)
+else()
+    message(FATAL_ERROR "Ceres support is required")
+endif()
