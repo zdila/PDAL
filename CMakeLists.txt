@@ -140,7 +140,6 @@ include(${PDAL_CMAKE_DIR}/dimension.cmake)
 include(${PDAL_CMAKE_DIR}/arbiter.cmake)
 include(${PDAL_CMAKE_DIR}/nlohmann.cmake)
 include(${PDAL_CMAKE_DIR}/openssl.cmake) # Optional
-include(${PDAL_CMAKE_DIR}/ceres.cmake) # Optional
 
 #------------------------------------------------------------------------------
 # generate the pdal_features.hpp header
@@ -275,7 +274,6 @@ target_include_directories(${PDAL_BASE_LIB_NAME}
         ${NLOHMANN_INCLUDE_DIR}
         ${GDAL_INCLUDE_DIR}
         ${LASZIP_INCLUDE_DIR}
-        ${CERES_INCLUDE_DIRS}
 )
 target_link_libraries(${PDAL_BASE_LIB_NAME}
     PRIVATE
@@ -292,7 +290,6 @@ target_link_libraries(${PDAL_BASE_LIB_NAME}
         ${PDAL_UTIL_LIB_NAME}
         ${PDAL_ARBITER_LIB_NAME}
         ${PDAL_KAZHDAN_LIB_NAME}
-        ${CERES_LIBRARIES}
     INTERFACE
         ${PDAL_LIBDIR}
 )

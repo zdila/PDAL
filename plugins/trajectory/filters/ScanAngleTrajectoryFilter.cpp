@@ -44,11 +44,11 @@ namespace pdal
 
 using namespace Dimension;
 
-static StaticPluginInfo const s_info{
+static PluginInfo const s_info{
     "filters.scanangletrajectory", "Scan-angle trajectory estimation filter",
     "http://pdal.io/stages/filters.scanangletrajectory.html"};
 
-CREATE_STATIC_STAGE(ScanAngleTrajectoryFilter, s_info)
+CREATE_SHARED_STAGE(ScanAngleTrajectoryFilter, s_info)
 
 ScanAngleTrajectoryFilter::ScanAngleTrajectoryFilter() {}
 

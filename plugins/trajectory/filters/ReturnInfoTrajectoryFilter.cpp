@@ -33,7 +33,7 @@
 
 #include "ReturnInfoTrajectoryFilter.hpp"
 
-#include "private/trajectory/PulseCollection.hpp"
+#include "PulseCollection.hpp"
 
 #include <Eigen/Dense>
 
@@ -43,7 +43,7 @@ namespace pdal
 using namespace Dimension;
 using namespace Eigen;
 
-static StaticPluginInfo const s_info{
+static PluginInfo const s_info{
     "filters.returninfotrajectory", "Return Info Trajectory estimation",
     "htts://pdal.io/stages/filters.returninfotrajectory.html"};
 
@@ -62,7 +62,7 @@ struct PrivateArgs
     double m_tout;
 };
 
-CREATE_STATIC_STAGE(ReturnInfoTrajectory, s_info)
+CREATE_SHARED_STAGE(ReturnInfoTrajectory, s_info)
 
 ReturnInfoTrajectory::ReturnInfoTrajectory() : Filter(), m_args(new PrivateArgs)
 {

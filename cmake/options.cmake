@@ -84,6 +84,11 @@ option(BUILD_PLUGIN_TILEDB
 add_feature_info("TileDB plugin" BUILD_PLUGIN_TILEDB
     "read/write data from TileDB")
 
+option(BUILD_PLUGIN_TRAJECTORY
+    "Choose if trajectory estimation support should be built" FALSE)
+add_feature_info("Trajectory plugin" BUILD_PLUGIN_TRAJECTORY
+    "estimate trajectories")
+
 option(BUILD_PLUGIN_E57
         "Choose if e57 ui support should be built" FALSE)
 add_feature_info("E57 plugin" BUILD_PLUGIN_E57
