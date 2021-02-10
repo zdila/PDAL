@@ -42,6 +42,7 @@
 #include "DimRange.hpp"
 #include "Segmentation.hpp"
 
+#include <numeric>
 #include <vector>
 
 namespace pdal
@@ -247,6 +248,40 @@ PointIdList farthestPointSampling(PointView& view, point_count_t count)
         }
     }
 
+    return ids;
+}
+
+PointIdList inverseDensityImportanceSampling(PointView& view,
+                                             point_count_t count,
+                                             point_count_t knn)
+{
+    using namespace Dimension;
+
+    // Construct a KD-tree of the input view.
+    KD3Index& kdi = view.build3dIndex();
+
+    // Increment knn by one to account for query point, which does not
+    // contribute to density calculation.
+    knn++;
+
+    for (PointRef p : view)
+    {
+        PointIdList indices(knn);
+        std::vector<double> sqr_dists(knn);
+        kdi.knnSearch(p, knn, &indices, &sqr_dists);
+        double density =
+            std::accumulate(sqr_dists.begin(), sqr_dists.end(), 0.0);
+        p.setField(Id::Density, 1.0 / density);
+    }
+
+    PointIdList ids(view.size());
+    std::iota(ids.begin(), ids.end(), 0);
+    auto cmp = [&view](PointId const& i1, PointId const& i2) {
+        return view.getFieldAs<double>(Id::Density, i1) <
+               view.getFieldAs<double>(Id::Density, i2);
+    };
+    std::stable_sort(ids.begin(), ids.end(), cmp);
+    ids.resize(count);
     return ids;
 }
 

@@ -48,6 +48,8 @@ Reference
 
 .. [Fischer2010] Fischer, Kaspar, Bernd Gärtner, and Martin Kutz. “Fast Smallest-Enclosing-Ball Computation in High Dimensions.” 26473 (2010): 630–641. Web.
 
+.. [Groh2018] Groh F., Wieschollek P., Lensch H.P.A. (2019) Flex-Convolution. In: Jawahar C., Li H., Mori G., Schindler K. (eds) Computer Vision – ACCV 2018. ACCV 2018. Lecture Notes in Computer Science, vol 11361. Springer, Cham. https://doi.org/10.1007/978-3-030-20887-5_7
+
 .. [Guinard2017] Guinard S., Landrieu L. "Weakly Supervised Segmented-Aided Classification of Urban Scenes From 3D LIDAR Point Clouds." Int. Arch. Photogramm. Remote Sens. Spatial Inf. Sci., XLII-1/W1, 151-157, 2017
 
 .. [Kazhdan2006] Kazhdan, Michael, Matthew Bolitho, and Hugues Hoppe. "Poisson surface reconstruction." Proceedings of the fourth Eurographics symposium on Geometry processing. Vol. 7. 2006.

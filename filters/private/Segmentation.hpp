@@ -171,5 +171,9 @@ PDAL_DLL void segmentReturns(PointViewPtr input, PointViewPtr first,
 
 PDAL_DLL PointIdList farthestPointSampling(PointView& view, point_count_t count);
 
+PDAL_DLL PointIdList inverseDensityImportanceSampling(PointView& view,
+                                                      point_count_t count,
+                                                      point_count_t knn);
+
 } // namespace Segmentation
 } // namespace pdal
