@@ -244,3 +244,82 @@ TEST(SegmentationTest, SegmentReturns)
     EXPECT_EQ(3u, first->size());
     EXPECT_EQ(1u, second->size());
 }
+
+TEST(SegmentationTest, InverseDensityImportanceSamplingSingle)
+{
+    using namespace Segmentation;
+
+    PointIdList ids;
+
+    PointTable table;
+    PointLayoutPtr layout(table.layout());
+
+    layout->registerDim(Dimension::Id::X);
+    layout->registerDim(Dimension::Id::Y);
+    layout->registerDim(Dimension::Id::Z);
+
+    PointView src(table);
+
+    src.setField(Dimension::Id::X, 0, 0.0);
+    src.setField(Dimension::Id::Y, 0, 0.0);
+    src.setField(Dimension::Id::Z, 0, 0.0);
+    ids = inverseDensityImportanceSampling(src, 2, 1);
+    EXPECT_EQ(1u, ids.size());
+}
+
+TEST(SegmentationTest, InverseDensityImportanceSamplingDouble)
+{
+    using namespace Segmentation;
+
+    PointIdList ids;
+
+    PointTable table;
+    PointLayoutPtr layout(table.layout());
+
+    layout->registerDim(Dimension::Id::X);
+    layout->registerDim(Dimension::Id::Y);
+    layout->registerDim(Dimension::Id::Z);
+
+    PointView src(table);
+
+    src.setField(Dimension::Id::X, 0, 0.0);
+    src.setField(Dimension::Id::Y, 0, 0.0);
+    src.setField(Dimension::Id::Z, 0, 0.0);
+
+    src.setField(Dimension::Id::X, 1, 10.0);
+    src.setField(Dimension::Id::Y, 1, 10.0);
+    src.setField(Dimension::Id::Z, 1, 10.0);
+    ids = inverseDensityImportanceSampling(src, 2, 1);
+    EXPECT_EQ(2u, ids.size());
+}
+
+TEST(SegmentationTest, InverseDensityImportanceSamplingTriple)
+{
+    using namespace Segmentation;
+
+    PointIdList ids;
+
+    PointTable table;
+    PointLayoutPtr layout(table.layout());
+
+    layout->registerDim(Dimension::Id::X);
+    layout->registerDim(Dimension::Id::Y);
+    layout->registerDim(Dimension::Id::Z);
+
+    PointView src(table);
+
+    src.setField(Dimension::Id::X, 0, 0.0);
+    src.setField(Dimension::Id::Y, 0, 0.0);
+    src.setField(Dimension::Id::Z, 0, 0.0);
+
+    src.setField(Dimension::Id::X, 1, 10.0);
+    src.setField(Dimension::Id::Y, 1, 10.0);
+    src.setField(Dimension::Id::Z, 1, 10.0);
+
+    src.setField(Dimension::Id::X, 2, 0.5);
+    src.setField(Dimension::Id::Y, 2, 0.5);
+    src.setField(Dimension::Id::Z, 2, 0.5);
+    ids = inverseDensityImportanceSampling(src, 3, 1);
+    EXPECT_EQ(3u, ids.size());
+    EXPECT_EQ(point_count_t(1), ids[2]);
+}

@@ -263,25 +263,28 @@ PointIdList inverseDensityImportanceSampling(PointView& view,
     // Increment knn by one to account for query point, which does not
     // contribute to density calculation.
     knn++;
-
+    std::vector<double> densities(view.size());
     for (PointRef p : view)
     {
         PointIdList indices(knn);
         std::vector<double> sqr_dists(knn);
         kdi.knnSearch(p, knn, &indices, &sqr_dists);
+        std::transform(sqr_dists.begin(), sqr_dists.end(), sqr_dists.begin(),
+                       [](double val) { return std::sqrt(val); });
         double density =
             std::accumulate(sqr_dists.begin(), sqr_dists.end(), 0.0);
-        p.setField(Id::Density, 1.0 / density);
+        densities[p.pointId()] = 1.0 / density;
     }
 
-    PointIdList ids(view.size());
+    PointIdList ids(densities.size());
     std::iota(ids.begin(), ids.end(), 0);
-    auto cmp = [&view](PointId const& i1, PointId const& i2) {
-        return view.getFieldAs<double>(Id::Density, i1) <
-               view.getFieldAs<double>(Id::Density, i2);
+    auto cmp = [&densities](PointId const& i1, PointId const& i2) {
+        return densities[i1] > densities[i2];
     };
     std::stable_sort(ids.begin(), ids.end(), cmp);
-    ids.resize(count);
+    if (count < view.size())
+        ids.resize(count);
+
     return ids;
 }
 
