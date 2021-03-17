@@ -1,0 +1,23 @@
+file (GLOB SOURCES [A-Za-z]*.cpp)
+file (GLOB HEADERS LidarTrajectory/[A-Za-z]*.hpp)
+
+add_library (${PROJECT_LIBRARY_LIST} SHARED ${SOURCES} ${HEADERS})
+
+target_include_directories (${PROJECT_LIBRARY_LIST}
+  PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<INSTALL_INTERFACE:include>
+  PRIVATE
+  ${CERES_INCLUDE_DIRS})
+
+target_link_libraries (${PROJECT_LIBRARY_LIST}
+  PUBLIC ${Eigen3_LIBRARIES}
+  PRIVATE ${GeographicLib_LIBRARIES} ${CERES_LIBRARIES})
+
+install (TARGETS ${PROJECT_LIBRARY_LIST}
+  EXPORT targets
+  RUNTIME DESTINATION bin
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib)
+
+install (FILES ${HEADERS} DESTINATION include/LidarTrajectory)

@@ -1,0 +1,70 @@
+Convert sbet data to text
+
+    pdal pipeline -i stdin <<EOF
+    [
+      {
+        "type" : "readers.sbet",
+        "filename" : "sbet_047_IGS08.out"
+      },
+      {
+        "type" : "filters.reprojection",
+        "in_srs" : "EPSG:4326",
+        "out_srs" : "EPSG:32615"
+      },
+      {
+        "type" : "writers.text",
+        "precision": 6,
+        "filename" : "sbet.txt"
+      }
+    ]
+    EOF
+
+The headings of sbet.txt are
+
+    GpsTime,
+    Y,X,Z,
+    XVelocity,YVelocity,ZVelocity,
+    Roll,Pitch,Azimuth,WanderAngle,
+    XBodyAccel,YBodyAccel,ZBodyAccel,
+    XBodyAngRate,YBodyAngRate,ZBodyAngRate
+
+Now
+
+    Y = UTM northing m
+    X = UTM easting m
+    Z = HAE m
+
+    XVelocity = dY/dt - 0.135 (m/s) (not X)
+    YVelocity = -dX/dt +/- 0.01 (note sign)
+    ZVelocity = dZ/dt
+
+    XBodyAccel = -d^2 X/dt^2 (m/s^2)
+    YBodyAccel =  d^2 Y/dt^2 (m/s^2)
+    ZBodyAccel = -d^2 Z/dt^2 (m/s^2)
+
+Roll (about y), Pitch (about x), Azimuth (about -z) in deg
+
+    XBodyAngRate = dRoll/dt (deg/s)
+    YBodyAngRate = dPitch/dt (deg/s)
+    ZBodyAngRate = dAzi/dt (deg/s)
+
+Projection issues.  For C2_L2 dataset
+
+    UTM Meridian convergence = -1.16177 deg
+    UTM Scale = 1.0002338
+
+Because scale is so close to unity, can't tell if velocity is in (UTM
+m)/s or (true m)/s, etc.
+
+Let Heading1 = atan2d(dX/dt, dY/dt)
+    Heading2 = atan2d(-YVelocity, XVelocity)
+    the difference between these is 0.117 deg (much less than meridican conv)
+
+True Heading = Grid Heading + Meridian Convergence
+
+mean(azi-heading) = -1.5 deg
+
+It *might* be that azimuth is wrt true north (but can't really tell)
+
+
+

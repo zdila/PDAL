@@ -1,0 +1,54 @@
+/* Maxima derivation of cubic curve which is specified by values and
+derivates at t = +/- 1/2 */
+
+cub:a0+a1*t+a2*t^2+a3*t^3;
+c(t):=''cub$
+c1(t):=''(diff(cub,t))$
+
+/* parameterize cub with rm,rp,vm,vp the position and velocity at
+t=-1/2 & 1/2 */
+
+eqs:[c(-1/2)=rm,c(1/2)=rp,c1(-1/2)=vm,c1(1/2)=vp]$
+sol:linsolve(eqs,[a0,a1,a2,a3])$
+sola:
+[a0 = (4*(rp+rm)-(vp-vm))/8,
+ a1 = (6*(rp-rm)-(vp+vm))/4,
+ a2 =            (vp-vm) /2,
+ a3 = -2*(rp-rm)+(vp+vm)   ]$
+/*
+Let
+  rs = rp + rm, rd = rp - rm
+  vs = vp + vm, vd = vp - vm
+or
+  rp = (rs+rd)/2, rm = (rs-rd)/2
+  vp = (vs+vd)/2, vm = (vs-vd)/2
+*/
+sola:
+[a0 = (4*rs-vd)/8,
+ a1 = (6*rd-vs)/4,
+ a2 =       vd /2,
+ a3 = -2*rd+vs   ]$
+
+/*
+second derivative
+at t= 1/2, c'' =  4*vp+2*vm-6*rp+6*rm
+at t=-1/2, c'' = -2*vp-4*vm+6*rp-6*rm
+
+Match across the segments [-1,0] and [0,1]
+
+4*v[0]+2*v[-1]-6*r[0]+6*r[-1] = -2*v[1]-4*v[0]+6*r[1]-6*r[0]
+
+or
+
+  -8*v[0] + 6*(r[1]-r[-1]) - 2*(v[1]+v[-1]) = 0
+
+third derivative = const
+  = 6*vp+6*vm-12*rp+12*rm
+
+Match across the segments [-1,0] and [0,1]
+  (forces the two cubic to be the same)
+
+v[0]-2*r[0]+v[-1]+2*r[-1] = v[1]-2*r[1]+v[0]+2*r[0]
+
+  4*r[0] - 2*(r[1]+r[-1]) + (v[1]-v[-1]) = 0
+*/
