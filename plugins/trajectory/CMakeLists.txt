@@ -20,12 +20,13 @@ add_subdirectory (resources)
 add_subdirectory (cmake)
 #add_subdirectory (sandbox)
 
-if (WITH_TESTS)
-    #add_subdirectory (test)
-    PDAL_ADD_TEST(pdal_filters_trajectory_test
-        FILES
-	    test/testtraj.cpp
-	LINK_WITH
-            ${PROJECT_LIBRARY_LIST}
-	)
-endif()
+# Currently not a standard test
+#if (WITH_TESTS)
+#    #add_subdirectory (test)
+#    PDAL_ADD_TEST(pdal_filters_trajectory_test
+#        FILES
+#	    test/testtraj.cpp
+#	LINK_WITH
+#            ${PROJECT_LIBRARY_LIST}
+#	)
+#endif()
