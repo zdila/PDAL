@@ -18,5 +18,8 @@ else
 
 fi
 
+conda install eigen ceres-solver -y
+conda install -c saedrna geographiclib -y
+
 gdalinfo --version
 
