@@ -27,17 +27,10 @@ jobs:
         channels: conda-forge
         auto-update-conda: true
 
-    - name: Setup OSX
-      shell: bash -l {0}
-      run: |
-          source ./scripts/ci/conda/setup_osx.sh
-      if: matrix.platform == 'macos-latest'
-
     - name: Setup
       shell: bash -l {0}
       run: |
           source ./scripts/ci/conda/setup.sh
-      if: matrix.platform != 'macos-latest'
 
     - name: Build
       shell: bash -l {0}

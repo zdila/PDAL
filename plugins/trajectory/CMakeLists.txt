@@ -1,11 +1,11 @@
-find_package (Eigen3 REQUIRED)
-set (Eigen3_LIBRARIES Eigen3::Eigen)
+find_package (Eigen3)
 find_package (Ceres)
 find_package (GeographicLib)
 
-if ((NOT Ceres_FOUND) OR (NOT GeographicLib_FOUND))
-	message(WARNING "Ceres or GeographicLib not found. Skipping trajectory filter plugin.")
+if ((NOT Ceres_FOUND) OR (NOT GeographicLib_FOUND) OR (NOT Eigen3_FOUND))
+	message(WARNING "Ceres, GeographicLib or Eigen3 not found. Skipping trajectory filter plugin.")
 else()
+    set (Eigen3_LIBRARIES Eigen3::Eigen)
     set (PROJECT_LIBRARY_LIST LidarTrajectory)
 
     add_subdirectory (src)
