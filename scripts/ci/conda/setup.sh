@@ -1,6 +1,7 @@
 #!/bin/bash
 
-conda install -c conda-forge conda-build anaconda-client -y
+conda install -c conda-forge conda-build anaconda-client ceres-solver -y
+conda install -c saedrna geographiclib
 pwd
 ls
 git clone https://github.com/conda-forge/pdal-feedstock.git
