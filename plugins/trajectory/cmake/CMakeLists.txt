@@ -29,6 +29,6 @@ install (FILES
 
 # Make information about the cmake targets (the library)
 # available.
-install (EXPORT targets
-  FILE "${PROJECT_NAME_LOWER}-targets.cmake"
-  DESTINATION "${INSTALL_CMAKE_DIR}")
+#install (EXPORT targets
+#  FILE "${PROJECT_NAME_LOWER}-targets.cmake"
+#  DESTINATION "${INSTALL_CMAKE_DIR}")
