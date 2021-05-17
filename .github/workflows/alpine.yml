@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
-    container: pdal/alpinebase:latest
+    container: pdal/alpinebase:3.13
     steps:
     - uses: actions/checkout@v2
     - name: Setup
