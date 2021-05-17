@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/ash
 
 gdal-config --version
 gcc --version
