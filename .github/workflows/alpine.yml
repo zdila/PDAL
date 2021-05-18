@@ -11,24 +11,29 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Setup
+      shell: ash -l {0}
       run: |
           source ./scripts/ci/alpine/setup.sh
 
     - name: CMake
+      shell: ash -l {0}
       run: |
           source ../scripts/ci/alpine/cmake.sh
       working-directory: ./build
 
     - name: Compile
+      shell: ash -l {0}
       run: |
           source ../scripts/ci/alpine/compile.sh
       working-directory: ./build
 
     - name: Test
+      shell: ash -l {0}
       run: |
           source ../scripts/ci/alpine/test.sh
       working-directory: ./build
 
     - name: Examples
+      shell: ash -l {0}
       run: |
           source ./scripts/ci/alpine/examples.sh
