@@ -46,6 +46,9 @@
 #include <sstream>
 #include <string>
 
+namespace pdal
+{
+
 namespace
 {
 
@@ -71,9 +74,24 @@ void run_pipeline(std::string const& pipelineFile,
     if (stat)
         std::cerr << output << std::endl;
     if (lookFor.size())
-    {
         EXPECT_NE(output.find(lookFor), std::string::npos);
-    }
+}
+
+void run_bad_pipeline(std::string const& pipelineFile,
+    const std::string options = std::string(), const std::string lookFor = "")
+{
+    const std::string cmd = appName();
+
+    std::string output;
+    std::string file(Support::configuredpath(pipelineFile));
+    int stat = pdal::Utils::run_shell_command(cmd + " " + file + " " +
+        options + " 2>&1", output);
+    EXPECT_NE(0, stat) << "Expected failure running '" << pipelineFile <<
+        "' with options '" << options << "'.";
+    if (stat)
+        std::cerr << output << std::endl;
+    if (lookFor.size())
+        EXPECT_NE(output.find(lookFor), std::string::npos);
 }
 
 // most pipelines (those with a writer) will be invoked via `pdal pipeline`
@@ -91,9 +109,6 @@ void run_pipeline_stdin(std::string const& pipelineFile)
 }
 
 } // unnamed namespace
-
-namespace pdal
-{
 
 TEST(pipelineBaseTest, no_input)
 {
@@ -151,6 +166,7 @@ INSTANTIATE_TEST_CASE_P(base, json,
                             "pipeline/assign.json",
                             "pipeline/bpf2las.json",
                             "pipeline/chipper.json",
+                            "pipeline/colorinterp.json",
                             "pipeline/colorize-multi.json",
                             "pipeline/colorize.json",
                             "pipeline/crop-hole.json",
@@ -188,11 +204,11 @@ TEST(json, pipeline_stdin)
 TEST(json, pipeline_verify)
 {
     run_pipeline("pipeline/streamable.json", "--validate",
-        "\"streamable\" : true");
+        "\"streamable\": true");
     run_pipeline("pipeline/nonstreamable.json", "--validate",
-        "\"streamable\" : false");
+        "\"streamable\": false");
     run_pipeline("pipeline/invalid1.json", "--validate",
-        "Unable to parse");
+        "unexpected string literal");
     run_pipeline("pipeline/invalid2.json", "--validate",
         "Unexpected argument");
     run_pipeline("pipeline/streamable.json", "-v Debug",
@@ -200,7 +216,6 @@ TEST(json, pipeline_verify)
     run_pipeline("pipeline/streamable.json", "-v Debug --nostream",
         "standard mode");
 }
-
 
 class jsonWithNITF : public testing::TestWithParam<const char*> {};
 
@@ -315,28 +330,9 @@ TEST(json, issue_1417)
     run_pipeline("pipeline/issue1417.json", options);
 }
 
-// Make sure we handle repeated options properly
-TEST(json, issue_1941)
+TEST(json, issue_2984)
 {
-    PipelineManager manager;
-    std::string file;
-
-    file = Support::configuredpath("pipeline/range_multi_limits.json");
-    manager.readPipeline(file);
-    EXPECT_EQ(manager.execute(), (point_count_t)5);
-    const PointViewSet& s = manager.views();
-    EXPECT_EQ(s.size(), 1U);
-    PointViewPtr view = *s.begin();
-    EXPECT_EQ(view->getFieldAs<int>(Dimension::Id::X, 0), 3);
-    EXPECT_EQ(view->getFieldAs<int>(Dimension::Id::X, 1), 4);
-    EXPECT_EQ(view->getFieldAs<int>(Dimension::Id::X, 2), 5);
-    EXPECT_EQ(view->getFieldAs<int>(Dimension::Id::X, 3), 8);
-    EXPECT_EQ(view->getFieldAs<int>(Dimension::Id::X, 4), 9);
-
-    PipelineManager manager2;
-
-    file = Support::configuredpath("pipeline/range_bad_limits.json");
-    EXPECT_THROW(manager2.readPipeline(file), pdal_error);
+    run_bad_pipeline("pipeline/issue2984.json", "", "parse error");
 }
 
 // Test that stage options passed via --stage.<tagname>.<option> work.
@@ -458,7 +454,27 @@ TEST(json, issue_2159)
     PointViewSet s = f.execute(t);
     PointViewPtr v = *(s.begin());
     SpatialReference srs = v->spatialReference();
-    EXPECT_EQ(srs, SpatialReference("EPSG:4326"));
+    EXPECT_EQ(srs, "EPSG:4326");
+}
+
+TEST(json, issue_2438)
+{
+    std::string file1(Support::temppath("out2438_1.las"));
+    std::string file2(Support::temppath("out2438_1.las"));
+
+    FileUtils::deleteFile(file1);
+    FileUtils::deleteFile(file2);
+    run_pipeline("pipeline/issue2438.json");
+    EXPECT_TRUE(FileUtils::fileExists(file1));
+    EXPECT_TRUE(FileUtils::fileExists(file2));
+}
+
+//
+// Make sure that we throw an error if we use pipeline without a reader.
+//
+TEST(json, issue_3233)
+{
+    run_bad_pipeline("pipeline/filter-only.json", "", "start with a reader");
 }
 
 } // namespace pdal

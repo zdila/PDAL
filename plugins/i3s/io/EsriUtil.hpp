@@ -33,9 +33,10 @@
 ****************************************************************************/
 #pragma once
 
+#include <sstream>
 #include <stdexcept>
 
-#include <json/json.h>
+#include <pdal/JsonFwd.hpp>
 
 namespace lepcc
 {
@@ -45,44 +46,78 @@ namespace lepcc
 
 namespace pdal
 {
-namespace EsriUtil
+namespace i3s
 {
 
-class json_parse_error : public std::runtime_error
+class Version
 {
+private:
+    int major = 0;
+    int minor = 0;
+    int patch = 0;
+
 public:
-    json_parse_error(const std::string txt) : std::runtime_error(txt)
+    Version()
     {}
-};
 
-class decompression_error : public std::runtime_error
-{
-public:
-    decompression_error(const std::string txt) : std::runtime_error(txt)
-    {}
-};
-
-/*Return value of data in json format*/
-inline Json::Value parse(const std::string& data)
-{
-    Json::Value json;
-    Json::Reader reader;
-    if (data.size())
+    Version(std::string vString)
     {
-        if (!reader.parse(data, json, false))
-        {
-            const std::string jsonError(reader.getFormattedErrorMessages());
-            if (!jsonError.empty())
-                throw json_parse_error("Error during parsing: " +
-                        jsonError);
-        }
+        std::istringstream iss(vString);
+        std::string token;
+        if(std::getline(iss, token, '.'))
+            if(!token.empty())
+                major = std::stoi(token);
+        if(std::getline(iss, token, '.'))
+            if(!token.empty())
+                minor = std::stoi(token);
+        if(std::getline(iss, token, '.'))
+            if(!token.empty())
+                patch = std::stoi(token);
     }
-    return json;
+
+    bool operator<(const Version& other)
+    {
+        if(this->major < other.major)
+            return true;
+        if(this->minor < other.minor && this->major == other.major)
+            return true;
+        if(this->patch < other.patch &&
+                this->major == other.major &&
+                this->minor == other.minor)
+            return true;
+        return false;
+    }
+    bool operator==(const Version& other)
+    {
+        return (this->patch == other.patch && this->major == other.major &&
+                this->minor == other.minor);
+    }
+    bool operator <=(const Version& other)
+    { return *this < other || *this == other; }
+    bool operator >=(const Version& other)
+    { return !(*this < other); }
+    bool operator > (const Version& other)
+    { return !(*this < other) && !(*this == other); }
+
+    friend std::ostream& operator<<(std::ostream& out, const Version & v);
+};
+inline std::ostream& operator<<(std::ostream& out, const Version & v)
+{
+    out << v.major << "." << v.minor << "." << v.patch;
+    return out;
 }
 
+class EsriError : public std::runtime_error
+{
+public:
+    EsriError(const std::string txt) : std::runtime_error(txt)
+    {}
+};
+
+NL::json parse(const std::string& data, const std::string& error);
 std::vector<lepcc::Point3D> decompressXYZ(std::vector<char>* compData);
 std::vector<lepcc::RGB_t> decompressRGB(std::vector<char>* compData);
 std::vector<uint16_t> decompressIntensity(std::vector<char>* compData);
 
-} // namespace EsriUtil
+} // namespace i3s
 } // namespace pdal

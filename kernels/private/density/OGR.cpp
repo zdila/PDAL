@@ -38,8 +38,12 @@
 #include <sstream>
 #include <functional>
 
-#include <pdal/GDALUtils.hpp>
+#include <gdal.h>
+#include <ogr_api.h>
+
 #include <pdal/util/FileUtils.hpp>
+#include <pdal/private/gdal/GDALUtils.hpp>
+#include <pdal/private/gdal/SpatialRef.hpp>
 
 #include <filters/private/hexer/HexGrid.hpp>
 #include <filters/private/hexer/HexIter.hpp>
@@ -110,19 +114,18 @@ OGRGeometryH collectHexagon(hexer::HexInfo const& info,
 
 }
 
-} // unnamed namespace 
+} // unnamed namespace
 
 
-OGR::OGR(std::string const& filename, std::string srs, std::string driver,
-        std::string layerName)
+OGR::OGR(std::string const& filename, const std::string& wkt,
+        std::string driver, std::string layerName)
     : m_filename(filename)
     , m_driver(driver)
-    , m_srs(srs)
     , m_ds(0)
     , m_layer(0)
     , m_layerName(layerName)
 {
-    createLayer();
+    createLayer(wkt);
 }
 
 
@@ -132,41 +135,32 @@ OGR::~OGR()
 }
 
 
-void OGR::createLayer()
+void OGR::createLayer(const std::string& wkt)
 {
-
+    gdal::registerDrivers();
     OGRSFDriverH driver = OGRGetDriverByName(m_driver.c_str());
     if (driver == NULL)
     {
         throw pdal::pdal_error("OGR Driver was null!");
     }
 
-    char **papszDSCO = NULL;
-    if (pdal::FileUtils::fileExists(m_filename))
-    {
+    if (FileUtils::fileExists(m_filename))
         m_ds = OGR_Dr_Open(driver, m_filename.c_str(), TRUE /*update*/);
-    }
     else
     {
-
-
         m_ds = OGR_Dr_CreateDataSource(driver, m_filename.c_str(), NULL);
         if (m_ds == NULL)
-        {
-            throw pdal::pdal_error("Data source creation was null!");
-        }
+            throw pdal_error("Unable to create output file '" + m_filename +
+                "' for density output.");
     }
 
-    pdal::gdal::SpatialRef spatialref(m_srs);
-    OGRSpatialReferenceH ref = (OGRSpatialReferenceH)spatialref.get();
-
-    if (!m_layerName.size())
+    if (m_layerName.empty())
         m_layerName = m_filename;
-    m_layer = OGR_DS_CreateLayer(m_ds, m_layerName.c_str(), ref, wkbMultiPolygon, NULL);
+    gdal::SpatialRef srs(wkt);
+    m_layer = GDALDatasetCreateLayer(m_ds, m_layerName.c_str(), srs.get(),
+        wkbMultiPolygon, NULL);
     if (m_layer == NULL)
-    {
-        throw pdal::pdal_error("Layer creation was null!");
-    }
+        throw pdal_error("Layer creation was null!");
 
     OGRFieldDefnH hFieldDefn;
     hFieldDefn = OGR_Fld_Create("ID", OFTInteger);
@@ -188,9 +182,8 @@ void OGR::createLayer()
         throw pdal::pdal_error(oss.str());
     }
     OGR_Fld_Destroy(hFieldDefn);
-
-
 }
+
 
 void OGR::writeBoundary(hexer::HexGrid *grid)
 {

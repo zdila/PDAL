@@ -35,7 +35,6 @@
 #pragma once
 
 #include <pdal/pdal_features.hpp>
-
 #include <pdal/FlexWriter.hpp>
 #include <pdal/Streamable.hpp>
 
@@ -50,8 +49,6 @@
 #else
 using laszip_POINTER = void *;
 #endif
-
-#include <json/json.h>
 
 namespace pdal
 {
@@ -130,7 +127,7 @@ private:
     StringHeaderVal<0> m_offsetZ;
     MetadataNode m_forwardMetadata;
     bool m_writePDALMetadata;
-    Json::Value m_userVLRs;
+    std::vector<ExtLasVLR> m_userVLRs;
     bool m_firstPoint;
 
     virtual void addArgs(ProgramArgs& args);
@@ -173,6 +170,7 @@ private:
     void openCompression();
     void addVlr(const std::string& userId, uint16_t recordId,
         const std::string& description, std::vector<uint8_t>& data);
+    void addVlr(const ExtLasVLR& evlr);
     void deleteVlr(const std::string& userId, uint16_t recordId);
     void addGeotiffVlrs();
     bool addWktVlr();
@@ -180,8 +178,9 @@ private:
     void finishLazPerfOutput();
     bool processPoint(PointRef& point);
 
-    LasWriter& operator=(const LasWriter&); // not implemented
-    LasWriter(const LasWriter&); // not implemented
+    LasWriter& operator=(const LasWriter&) = delete;
+    LasWriter(const LasWriter&) = delete;
+    LasWriter(const LasWriter&&) = delete;
 };
 
 } // namespace pdal

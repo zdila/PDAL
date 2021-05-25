@@ -37,6 +37,7 @@
 #include <pdal/FlexWriter.hpp>
 #include <pdal/PointView.hpp>
 #include <pdal/Streamable.hpp>
+#include <pdal/util/Bounds.hpp>
 #include <pdal/util/ProgramArgs.hpp>
 
 namespace pdal
@@ -74,18 +75,25 @@ private:
     virtual void doneFile();
     void createGrid(BOX2D bounds);
     void expandGrid(BOX2D bounds);
-    Cell cell(double x, double y);
-    long width() const;
-    long height() const;
+    int width() const;
+    int height() const;
 
     std::string m_outputFilename;
     std::string m_drivername;
     SpatialReference m_srs;
     Bounds m_bounds;
-    Position m_origin;
     double m_edgeLength;
     Arg *m_radiusArg;
+    double m_xOrigin;
+    double m_yOrigin;
+    size_t m_width;
+    size_t m_height;
+    Arg *m_xOriginArg;
+    Arg *m_yOriginArg;
+    Arg *m_heightArg;
+    Arg *m_widthArg;
     double m_radius;
+    double m_power;
     StringList m_options;
     StringList m_outputTypeString;
     size_t m_windowSize;
@@ -97,6 +105,8 @@ private:
     Dimension::Type m_dataType;
     bool m_expandByPoint;
     bool m_fixedGrid;
+    SpatialReference m_defaultSrs;
+    SpatialReference m_overrideSrs;
 };
 
 }

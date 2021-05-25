@@ -45,7 +45,7 @@ using namespace pdal;
 
 TEST(PipelineManagerTest, basic)
 {
-    const char * outfile = "temp.las";
+    std::string outfile = Support::temppath("temp.las");
     FileUtils::deleteFile(outfile);
 
     PipelineManager mgr;
@@ -155,6 +155,17 @@ TEST(PipelineManagerTest, InputGlobbing)
     EXPECT_EQ(v->size(), 10653U);
 
     FileUtils::deleteFile(Support::temppath("globbed.las"));
+}
+
+// EPT addon writer options are objects and not strings
+TEST(PipelineManagerTest, objects)
+{
+    std::string cmd = Support::binpath(Support::exename("pdal") +
+                                       " pipeline --validate");
+    std::string file = Support::configuredpath("pipeline/ept_addon.json");
+
+    std::string output;
+    EXPECT_NO_THROW(Utils::run_shell_command(cmd + " " + file, output));
 }
 
 TEST(PipelineManagerTest, arrayPipeline)

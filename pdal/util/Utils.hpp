@@ -62,6 +62,53 @@ namespace pdal
 
 namespace Utils
 {
+
+#if defined(__APPLE__) && defined(__MACH__)
+    const char dynamicLibExtension[] = ".dylib";
+    const char dirSeparator = '/';
+    const char pathListSeparator = ':';
+#elif defined _WIN32
+    const char dynamicLibExtension[] = ".dll";
+    const char dirSeparator = '\\';
+    const char pathListSeparator = ';';
+#else
+    const char dynamicLibExtension[] = ".so";
+    const char dirSeparator = '/';
+    const char pathListSeparator = ':';
+#endif
+
+    class StatusWithReason
+    {
+    public:
+        StatusWithReason() : m_code(0)
+        {}
+        StatusWithReason(bool ok)
+        {
+            if (ok)
+                m_code = 0;
+            else
+                m_code = -1;
+        }
+        StatusWithReason(int code);  // Not defined
+        StatusWithReason(int code, const std::string& what) :
+            m_code(code), m_what(what)
+        {}
+
+        int code() const
+        { return m_code; }
+
+        operator bool () const
+        { return (m_code == 0); }
+
+        std::string what() const
+        { return m_what; }
+
+    private:
+        int m_code;
+        std::string m_what;
+    };
+
+
     /**
      * \brief Clamp value to given bounds.
      *
@@ -93,27 +140,6 @@ namespace Utils
       \param maximum  Upper value of range for random number generation.
     */
     PDAL_DLL double random(double minimum, double maximum);
-
-    /**
-      Generate values in a uniform distribution in the range [minimum, maximum]
-      using the provided seed value.
-
-      \param double  Lower value of range for random number generation.
-      \param double  Upper value of range for random number generation.
-      \param seed    Seed value for random number generation.
-    */
-    PDAL_DLL double uniform(const double& minimum, const double& maximum,
-        uint32_t seed);
-    /**
-      Generate values in a normal distribution in the range [minimum, maximum]
-      using the provided seed value.
-
-      \param double  Lower value of range for random number generation.
-      \param double  Upper value of range for random number generation.
-      \param seed    Seed value for random number generation.
-    */
-    PDAL_DLL double normal(const double& mean, const double& sigma,
-        uint32_t seed);
 
     /**
       Determine if two values are within a particular range of each other.
@@ -195,6 +221,21 @@ namespace Utils
     }
 
     /**
+      Determine if a string ends with a particular postfix.
+
+      \param s  String to check for postfix.
+      \param postfix Postfix to search for.
+      \return  Whether the string ends with the postfix.
+    */
+    inline bool endsWith(const std::string& s, const std::string& postfix)
+    {
+        if (postfix.size() > s.size())
+            return false;
+        return (strcmp(postfix.data(),
+                    s.data() + s.size() - postfix.size()) == 0);
+    }
+
+    /**
       Generate a checksum that is the integer sum of the values of the bytes
       in a buffer.
 
@@ -213,8 +254,8 @@ namespace Utils
     /**
       Fetch the value of an environment variable.
 
-      \param name  Name of environment varaible.
-      \param name  Value of the environemnt variable if it exists, empty
+      \param name  Name of environment variable.
+      \param name  Value of the environment variable if it exists, empty
         otherwise.
       \return  0 on success, -1 on failure
     */
@@ -245,14 +286,14 @@ namespace Utils
     PDAL_DLL void eatwhitespace(std::istream& s);
 
     /**
-      Remove whitspace from the beginning of a string.
+      Remove whitespace from the beginning of a string.
 
       \param s  String to be trimmed.
     */
     PDAL_DLL void trimLeading(std::string& s);
 
     /**
-      Remove whitspace from the end of a string.
+      Remove whitespace from the end of a string.
 
       \param s  String to be trimmed.
     */
@@ -896,7 +937,7 @@ namespace Utils
 
 
     template<typename T>
-    bool fromString(const std::string& from, T* & to)
+    StatusWithReason fromString(const std::string& from, T* & to)
     {
         void *v;
         // Uses sscanf instead of operator>>(istream, void*&) as a workaround
@@ -910,7 +951,6 @@ namespace Utils
         return true;
     }
 
-
     /**
       Convert a string to a value by reading from a string stream.
 
@@ -919,7 +959,7 @@ namespace Utils
       \return  \c true if the conversion was successful, \c false otherwise.
     */
     template<typename T>
-    bool fromString(const std::string& from, T& to)
+    StatusWithReason fromString(const std::string& from, T& to)
     {
         std::istringstream iss(from);
 
@@ -929,7 +969,7 @@ namespace Utils
 
     // Optimization of above.
     template<>
-    inline bool fromString(const std::string& from, std::string& to)
+    inline StatusWithReason fromString(const std::string& from, std::string& to)
     {
         to = from;
         return true;
@@ -943,7 +983,7 @@ namespace Utils
       \return  \c true if the conversion was successful, \c false otherwise.
     */
     template<>
-    inline bool fromString<char>(const std::string& s, char& to)
+    inline StatusWithReason fromString(const std::string& s, char& to)
     {
         try
         {
@@ -974,8 +1014,7 @@ namespace Utils
       \return  \c true if the conversion was successful, \c false otherwise.
     */
     template<>
-    inline bool fromString<unsigned char>(const std::string& s,
-        unsigned char& to)
+    inline StatusWithReason fromString(const std::string& s, unsigned char& to)
     {
         try
         {
@@ -1007,7 +1046,7 @@ namespace Utils
       \return  \c true if the conversion was successful, \c false otherwise.
     */
     template<>
-    inline bool fromString<signed char>(const std::string& s, signed char& to)
+    inline StatusWithReason fromString(const std::string& s, signed char& to)
     {
         try
         {
@@ -1038,7 +1077,7 @@ namespace Utils
       \return  \c true if the conversion was successful, \c false otherwise.
     */
     template<>
-    inline bool fromString<double>(const std::string& s, double& d)
+    inline StatusWithReason fromString(const std::string& s, double& d)
     {
         if (s == "nan" || s == "NaN")
         {

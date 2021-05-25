@@ -4,7 +4,8 @@
 filters.poisson
 ===============================================================================
 
-The poisson filter passes data Mischa Kazhdan's poisson surface reconstruction
+The **Poisson Filter** passes data Mischa Kazhdan's poisson surface
+reconstruction
 algorithm. [Kazhdan2006]_  It creates a watertight surface from the original
 point set by creating an entirely new point set representing the imputed
 isosurface.  The algorithm requires normal vectors to each point in order
@@ -16,7 +17,7 @@ The poisson algorithm will usually create a larger output point set
 than the input point set.  Because the algorithm constructs new points, data
 associated with the original points set will be lost, as the algorithm has
 limited ability to impute associated data.  However, if color dimensions
-(red, green and blue) are present in the input, colors will be reconstruced
+(red, green and blue) are present in the input, colors will be reconstructed
 in the output point set.
 
 This integration of the algorithm with PDAL only supports a limited set of
@@ -30,19 +31,16 @@ Example
 
 .. code-block:: json
 
-    {
-      "pipeline":[
-        "dense.las",
-        {
+  [
+      "dense.las",
+      {
           "type":"filters.poisson"
-        },
-        {
+      },
+      {
           "type":"writers.ply",
           "filename":"isosurface.ply"
-        }
-      ]
-    }
-
+      }
+  ]
 
 .. note::
     The algorithm is slow.  On a reasonable desktop machine, the surface
@@ -65,6 +63,9 @@ density
   set.
 
 depth
-  Maximum depth of the tree used for reconstruction. The output is sentsitve
+  Maximum depth of the tree used for reconstruction. The output is sensitive
   to this parameter.  Increase if the results appear unsatisfactory.
-  [Default: **8**]
+  [Default: 8]
+
+.. include:: filter_opts.rst
+

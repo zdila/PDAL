@@ -37,16 +37,14 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wredundant-decls"
-#include <pdal/GDALUtils.hpp>
 #include <pdal/PointView.hpp>
+#include <pdal/private/gdal/GDALUtils.hpp>
 #include <pdal/util/FileUtils.hpp>
+#include <pdal/private/gdal/ErrorHandler.hpp>
 
 #include <ogr_core.h>
 #include <ogrsf_frmts.h>
 #pragma GCC diagnostic pop
-
-// Only build this if we have at least version 2.1
-#ifdef PDAL_GDAL2_1
 
 namespace pdal
 {
@@ -195,4 +193,3 @@ void OGRWriter::doneFile()
 
 } // namespace pdal
 
-#endif // PDAL_GDAL2_1

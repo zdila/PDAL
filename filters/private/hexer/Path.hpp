@@ -52,6 +52,8 @@ enum Orientation
 };
 
 class HexGrid;
+class Path;
+using PathPtrList = std::vector<Path *>;
 
 class Path
 {
@@ -62,8 +64,8 @@ public:
 
     ~Path()
     {
-        for (std::vector<Path*>::size_type i = 0; i < m_children.size(); ++i)
-            delete m_children[i];
+        for (auto p : m_children)
+            delete p;
     }
 
     void push_back(const Segment& s)
@@ -88,7 +90,7 @@ public:
     Orientation orientation() const
         { return m_orientation; }
     std::vector<Point> points() const;
-    std::vector<Path *> subPaths() const
+    PathPtrList subPaths() const
         { return m_children; }
     void toWKT( std::ostream& output) const;
 
@@ -98,12 +100,15 @@ private:
     /// Parent path (NULL if root path)
     Path *m_parent;
     /// Children
-    std::vector<Path *> m_children;
+    PathPtrList m_children;
     /// Orientation of path AT EXTRACTION - segments are ALWAYS ordered
     /// clockwise.
     Orientation m_orientation;
     /// List of segments that make up the path.
     std::vector<Segment> m_segs;
+
+    void writeRing(std::ostream& out) const;
+    PathPtrList writePolygon(std::ostream& out) const;
 };
 
 } //namespace hexer

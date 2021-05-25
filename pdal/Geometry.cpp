@@ -32,295 +32,222 @@
 * OF SUCH DAMAGE.
 ****************************************************************************/
 
-#include <pdal/Geometry.hpp>
-#include "cpl_string.h"
-
+#pragma warning(push)
+#pragma warning(disable: 4251)
+#include <ogr_api.h>
 #include <ogr_geometry.h>
+#pragma warning(pop)
 
+#include <pdal/Geometry.hpp>
+#include <pdal/private/gdal/GDALUtils.hpp>
+
+#include "private/SrsTransform.hpp"
 
 namespace pdal
 {
 
+void Geometry::throwNoGeos()
+{
+    if (!OGRGeometryFactory::haveGEOS())
+        throw pdal_error("PDAL must be using a version of GDAL built with "
+            "GEOS support to use this function.");
+}
+
+
 Geometry::Geometry()
-    : m_prepGeom(0)
-    , m_geoserr(geos::ErrorHandler::get())
-{
-    geos::GeometryDeleter geom_del(m_geoserr);
-    GEOSGeomPtr p(GEOSGeom_createEmptyPolygon_r(m_geoserr.ctx()), geom_del);
-    m_geom.swap(p);
-}
-
-
-Geometry::Geometry(const std::string& wkt_or_json, SpatialReference ref)
-    : m_prepGeom(0)
-    , m_srs(ref)
-    , m_geoserr(geos::ErrorHandler::get())
-{
-    update(wkt_or_json);
-}
-
-
-Geometry::Geometry(const Geometry& input)
-    : m_srs(input.m_srs)
-    , m_geoserr(input.m_geoserr)
-{
-    assert(input.m_geom.get() != 0);
-    geos::GeometryDeleter geom_del(m_geoserr);
-    GEOSGeomPtr p(GEOSGeom_clone_r(m_geoserr.ctx(),  input.m_geom.get()),
-        geom_del);
-    m_geom.swap(p);
-    assert(m_geom.get() != 0);
-    m_prepGeom = 0;
-    prepare();
-}
-
-
-Geometry::Geometry(Geometry&& input) :
-    m_geom(std::move(input.m_geom)), m_prepGeom(input.m_prepGeom),
-    m_srs(input.m_srs), m_geoserr(input.m_geoserr)
 {}
 
 
-Geometry::~Geometry()
+Geometry::Geometry(const std::string& wkt_or_json, SpatialReference ref)
 {
-    m_geom.reset();
-    if (m_prepGeom)
-        GEOSPreparedGeom_destroy_r(m_geoserr.ctx(), m_prepGeom);
-    m_prepGeom = 0;
+    update(wkt_or_json);
+    if (ref.valid())
+        setSpatialReference(ref);
 }
+
+
+Geometry::Geometry(const Geometry& input) : m_geom(input.m_geom->clone())
+{}
+
+
+Geometry::Geometry(Geometry&& input) : m_geom(std::move(input.m_geom))
+{}
+
+
+Geometry::Geometry(OGRGeometryH g) :
+    m_geom((reinterpret_cast<OGRGeometry *>(g))->clone())
+{}
+
+
+Geometry::Geometry(OGRGeometryH g, const SpatialReference& srs) :
+    m_geom((reinterpret_cast<OGRGeometry *>(g))->clone())
+{
+    setSpatialReference(srs);
+}
+
+
+Geometry::~Geometry()
+{}
+
+
+void Geometry::modified()
+{}
 
 
 void Geometry::update(const std::string& wkt_or_json)
 {
-    bool isJson = wkt_or_json.find("{") != wkt_or_json.npos ||
-                  wkt_or_json.find("}") != wkt_or_json.npos;
+    bool isJson = (wkt_or_json.find("{") != wkt_or_json.npos) ||
+                  (wkt_or_json.find("}") != wkt_or_json.npos);
 
-    GEOSWKTReader* geosreader = GEOSWKTReader_create_r(m_geoserr.ctx());
-
-    if (!isJson)
+    OGRGeometry *newGeom;
+    std::string srs;
+    if (isJson)
     {
-        geos::GeometryDeleter geom_del(m_geoserr);
-        GEOSGeomPtr p(GEOSWKTReader_read_r(m_geoserr.ctx(), geosreader,
-            wkt_or_json.c_str()), geom_del);
-        m_geom.swap(p);
+        newGeom = gdal::createFromGeoJson(wkt_or_json, srs);
+        if (!newGeom)
+            throw pdal_error("Unable to create geometry from input GeoJSON");
     }
     else
     {
-        // Assume it is GeoJSON and try constructing from that
-        OGRGeometryH json = OGR_G_CreateGeometryFromJson(wkt_or_json.c_str());
-
-        if (!json)
-            throw pdal_error("Unable to create geometry from "
-                "input GeoJSON");
-
-        char* gdal_wkt(0);
-        OGRErr err = OGR_G_ExportToWkt(json, &gdal_wkt);
-
-        geos::GeometryDeleter geom_del(m_geoserr);
-        GEOSGeomPtr p(GEOSWKTReader_read_r(m_geoserr.ctx(), geosreader,
-            gdal_wkt), geom_del);
-        m_geom.swap(p);
-
-        OGRFree(gdal_wkt);
-        OGR_G_DestroyGeometry(json);
+        newGeom = gdal::createFromWkt(wkt_or_json, srs);
+        if (!newGeom)
+            throw pdal_error("Unable to create geometry from input WKT");
     }
-    prepare();
 
-    GEOSWKTReader_destroy_r(m_geoserr.ctx(), geosreader);
-}
-
-
-void Geometry::prepare()
-{
-    if (m_geom.get())
-    {
-        m_prepGeom = GEOSPrepare_r(m_geoserr.ctx(), m_geom.get());
-        if (!m_prepGeom)
-            throw pdal_error("unable to prepare geometry for "
-                "index-accelerated access");
-    }
+    // m_geom may be null if update() is called from a ctor.
+    if (newGeom->getSpatialReference() && srs.size())
+        throw pdal_error("Geometry contains spatial reference and one was "
+            "also provided following the geometry specification.");
+    if (!newGeom->getSpatialReference() && srs.size())
+        newGeom->assignSpatialReference(
+            new OGRSpatialReference(SpatialReference(srs).getWKT().data()));
+    // m_geom may be null if update() is called from a ctor.
+    else if (m_geom)
+        newGeom->assignSpatialReference(m_geom->getSpatialReference());
+    m_geom.reset(newGeom);
+    modified();
 }
 
 
 Geometry& Geometry::operator=(const Geometry& input)
 {
-    if (&input != this)
-    {
-        m_geoserr = input.m_geoserr;
-        m_srs = input.m_srs;
-        geos::GeometryDeleter geom_del(m_geoserr);
-        GEOSGeomPtr p(GEOSGeom_clone_r(m_geoserr.ctx(),  input.m_geom.get()),
-            geom_del);
-        m_geom.swap(p);
-        prepare();
-    }
+    if (m_geom != input.m_geom)
+        m_geom.reset(input.m_geom->clone());
+    modified();
     return *this;
 }
 
 
-Geometry::Geometry(GEOSGeometry* g, const SpatialReference& srs)
-    : m_srs(srs) , m_geoserr(geos::ErrorHandler::get())
+bool Geometry::srsValid() const
 {
-    geos::GeometryDeleter geom_del(m_geoserr);
-    GEOSGeomPtr p(GEOSGeom_clone_r(m_geoserr.ctx(),  g), geom_del);
-    m_geom.swap(p);
-    prepare();
+    OGRSpatialReference *srs = m_geom->getSpatialReference();
+    return srs && srs->GetRoot();
 }
 
 
-Geometry::Geometry(OGRGeometryH g, const SpatialReference& srs)
-    : m_srs(srs)
-    , m_geoserr(geos::ErrorHandler::get())
+Utils::StatusWithReason Geometry::transform(SpatialReference out)
 {
+    using namespace Utils;
 
-    OGRGeometry *ogr_g = (OGRGeometry*)g;
+    if (!srsValid() && out.empty())
+        return StatusWithReason();
 
-    // Convert the the GDAL geom to WKB in order to avoid the version
-    // context and DLL boundary issues with exporting directoly to GEOS
-    // from GDAL
-    OGRwkbByteOrder bo =
-        GEOS_getWKBByteOrder() == GEOS_WKB_XDR ? wkbXDR : wkbNDR;
-    int wkbSize = ogr_g->WkbSize();
-    std::vector<unsigned char> wkb(wkbSize);
+    if (!srsValid())
+        return StatusWithReason(-2,
+            "Geometry::transform() failed.  NULL source SRS.");
+    if (out.empty())
+        return StatusWithReason(-2,
+            "Geometry::transform() failed.  NULL target SRS.");
 
-    ogr_g->exportToWkb(bo, wkb.data());
-
-    GEOSWKBReader* reader = GEOSWKBReader_create_r(m_geoserr.ctx());
-
-    geos::GeometryDeleter geom_del(m_geoserr);
-    GEOSGeomPtr p(GEOSWKBReader_read_r(m_geoserr.ctx(),  reader, wkb.data(),
-        wkbSize), geom_del);
-    m_geom.swap(p);
-    prepare();
-
-    GEOSWKBReader_destroy_r(m_geoserr.ctx(), reader);
+    OGRSpatialReference *inSrs = m_geom->getSpatialReference();
+    SrsTransform transform(*inSrs, OGRSpatialReference(out.getWKT().data()));
+    if (m_geom->transform(transform.get()) != OGRERR_NONE)
+        return StatusWithReason(-1, "Geometry::transform() failed.");
+    modified();
+    return StatusWithReason();
 }
 
 
-Geometry Geometry::transform(const SpatialReference& ref) const
+void Geometry::setSpatialReference(const SpatialReference& srs)
 {
-    if (m_srs.empty())
-        throw pdal_error("Geometry::transform failed.  "
-            "Source missing spatial reference.");
-    if (ref.empty())
-        throw pdal_error("Geometry::transform failed.  "
-            "Invalid destination spatial reference.");
-    if (ref == m_srs)
-        return *this;
+    OGRSpatialReference *oSrs;
 
-    gdal::SpatialRef fromRef(m_srs.getWKT());
-    gdal::SpatialRef toRef(ref.getWKT());
-    gdal::Geometry geom(wkt(12, true), fromRef);
-    geom.transform(toRef);
-    return Geometry(geom.wkt(), ref);
+    if (!srs.valid())
+        oSrs = new OGRSpatialReference();
+    else
+        oSrs = new OGRSpatialReference(srs.getWKT().data());
+    m_geom->assignSpatialReference(oSrs);
+    oSrs->Release();
+}
+
+
+SpatialReference Geometry::getSpatialReference() const
+{
+    SpatialReference srs;
+
+    if (srsValid())
+    {
+        char *buf;
+        const char *options[] = { "FORMAT=WKT2", nullptr };
+        m_geom->getSpatialReference()->exportToWkt(&buf, options);
+        srs.set(buf);
+        CPLFree(buf);
+    }
+    return srs;
 }
 
 
 BOX3D Geometry::bounds() const
 {
-    uint32_t numInputDims;
-    BOX3D output;
-
-    GEOSGeometry* boundary = GEOSGeom_clone_r(m_geoserr.ctx(), m_geom.get());
-
-    // Smash out multi*
-    if (GEOSGeomTypeId_r(m_geoserr.ctx(), m_geom.get()) > 3)
-        boundary = GEOSEnvelope_r(m_geoserr.ctx(), m_geom.get());
-
-    GEOSGeometry const* ring = GEOSGetExteriorRing_r(m_geoserr.ctx(), boundary);
-    GEOSCoordSequence const* coords = GEOSGeom_getCoordSeq_r(m_geoserr.ctx(), ring);
-
-    GEOSCoordSeq_getDimensions_r(m_geoserr.ctx(), coords, &numInputDims);
-
-    uint32_t count(0);
-    GEOSCoordSeq_getSize_r(m_geoserr.ctx(), coords, &count);
-
-    double x(0.0);
-    double y(0.0);
-    double z(0.0);
-    for (unsigned i = 0; i < count; ++i)
-    {
-        GEOSCoordSeq_getOrdinate_r(m_geoserr.ctx(), coords, i, 0, &x);
-        GEOSCoordSeq_getOrdinate_r(m_geoserr.ctx(), coords, i, 1, &y);
-        if (numInputDims > 2)
-            GEOSCoordSeq_getOrdinate_r(m_geoserr.ctx(), coords, i, 2, &z);
-        output.grow(x, y, z);
-    }
-    GEOSGeom_destroy_r(m_geoserr.ctx(), boundary);
-
-    return output;
-}
-
-
-bool Geometry::equals(const Geometry& p, double tolerance) const
-{
-    return (bool) GEOSEqualsExact_r(m_geoserr.ctx(), m_geom.get(),
-        p.m_geom.get(), tolerance);
-}
-
-
-bool Geometry::operator==(const Geometry& input) const
-{
-    return this->equals(input);
-}
-
-
-bool Geometry::operator!=(const Geometry& input) const
-{
-    return !(this->equals(input));
+    OGREnvelope3D env;
+    m_geom->getEnvelope(&env);
+    return BOX3D(env.MinX, env.MinY, env.MinZ,
+        env.MaxX, env.MaxY, env.MaxZ);
 }
 
 
 bool Geometry::valid() const
 {
-    int gtype = GEOSGeomTypeId_r(m_geoserr.ctx(), m_geom.get());
-    if (gtype != GEOS_POLYGON && gtype != GEOS_MULTIPOLYGON)
-        return false;
+    throwNoGeos();
 
-    return (bool)GEOSisValid_r(m_geoserr.ctx(), m_geom.get());
-}
-
-
-std::string Geometry::validReason() const
-{
-    int gtype = GEOSGeomTypeId_r(m_geoserr.ctx(), m_geom.get());
-
-    char *reason = GEOSisValidReason_r(m_geoserr.ctx(), m_geom.get());
-    std::string output(reason);
-    GEOSFree_r(m_geoserr.ctx(), reason);
-    return output;
+    return (bool)m_geom->IsValid();
 }
 
 
 std::string Geometry::wkt(double precision, bool bOutputZ) const
 {
-    GEOSWKTWriter *writer = GEOSWKTWriter_create_r(m_geoserr.ctx());
-    GEOSWKTWriter_setRoundingPrecision_r(m_geoserr.ctx(), writer,
-        (int)precision);
-    if (bOutputZ)
-        GEOSWKTWriter_setOutputDimension_r(m_geoserr.ctx(), writer, 3);
+    // Important note: The precision is not always respected.  Using GDAL
+    // it can only be set once.  Because of this, there's no point in saving
+    // away the current OGR_WKT_PRECISION.  Same for OGR_WKT_ROUND.
+    //
+    // Also note that when abs(value) < 1, f-type formatting is used.
+    // Otherwise g-type formatting is used.  Precision means different things
+    // with the two format types.  With f-formatting it specifies the
+    // number of places to the right of the decimal.  In g-formatting, it's
+    // the minimum number of digits.  Yuck.
 
-    char *smoothWkt = GEOSWKTWriter_write_r(m_geoserr.ctx(), writer,
-        m_geom.get());
-    std::string output(smoothWkt);
-    GEOSFree_r(m_geoserr.ctx(), smoothWkt);
-    GEOSWKTWriter_destroy_r(m_geoserr.ctx(), writer);
-    return output;
+    std::string p(std::to_string((int)precision));
+    CPLSetConfigOption("OGR_WKT_PRECISION", p.data());
+    CPLSetConfigOption("OGR_WKT_ROUND", "FALSE");
+
+    char *buf;
+    OGRErr err = m_geom->exportToWkt(&buf);
+    if (err != OGRERR_NONE)
+        throw pdal_error("Geometry::wkt: unable to export geometry to WKT.");
+    std::string wkt(buf);
+    CPLFree(buf);
+    return wkt;
 }
 
 
 std::string Geometry::json(double precision) const
 {
-    std::ostringstream prec;
-    prec << precision;
-    char **papszOptions = NULL;
-    papszOptions = CSLSetNameValue(papszOptions, "COORDINATE_PRECISION",
-        prec.str().c_str() );
+    CPLStringList aosOptions;
+    std::string p(std::to_string((int)precision));
+    aosOptions.SetNameValue("COORDINATE_PRECISION", p.data());
 
-    gdal::SpatialRef srs(m_srs.getWKT());
-    gdal::Geometry g(wkt(), srs);
-
-    char* json = OGR_G_ExportToJsonEx(g.get(), papszOptions);
+    char* json = OGR_G_ExportToJsonEx(gdal::toHandle(m_geom.get()),
+        aosOptions.List());
     std::string output(json);
     OGRFree(json);
     return output;
@@ -336,12 +263,12 @@ std::ostream& operator<<(std::ostream& ostr, const Geometry& p)
 
 std::istream& operator>>(std::istream& istr, Geometry& p)
 {
-    std::ostringstream oss;
-    oss << istr.rdbuf();
+    // Read stream into string.
+    std::string s(std::istreambuf_iterator<char>(istr), {});
 
     try
     {
-        p.update(oss.str());
+        p.update(s);
     }
     catch (pdal_error& )
     {
@@ -350,4 +277,4 @@ std::istream& operator>>(std::istream& istr, Geometry& p)
     return istr;
 }
 
-} // namespace geos
+} // namespace pdal

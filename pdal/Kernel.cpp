@@ -40,6 +40,7 @@
 #include <pdal/PDALUtils.hpp>
 #include <pdal/pdal_config.hpp>
 #include <pdal/StageFactory.hpp>
+#include <pdal/util/Algorithm.hpp>
 #include <pdal/util/ProgramArgs.hpp>
 
 #include <pdal/pdal_config.hpp>
@@ -62,14 +63,13 @@ bool Kernel::isStagePrefix(const std::string& stageType)
 }
 
 
-bool Kernel::parseStageOption(std::string o, std::string& stage,
-    std::string& option, std::string& value)
+Kernel::ParseStageResult
+Kernel::parseStageOption(std::string o, std::string& stage, std::string& option,
+    std::string& value)
 {
     value.clear();
-    if (o.size() < 2)
-        return false;
-    if (o[0] != '-' || o[1] != '-')
-        return false;
+    if ((o.size() < 2) || (o[0] != '-') || (o[1] != '-'))
+        return ParseStageResult::Unknown;
 
     o = o.substr(2);
 
@@ -90,10 +90,8 @@ bool Kernel::parseStageOption(std::string o, std::string& stage,
     count = Utils::extract(o, pos, islc);
     pos += count;
     std::string stageType = o.substr(0, pos);
-    if (!isStagePrefix(stageType))
-        return false;
-    if (pos >= o.length() || o[pos++] != '.')
-        return false;
+    if (!isStagePrefix(stageType) || pos >= o.length() || o[pos++] != '.')
+        return ParseStageResult::Unknown;
 
     // Get stage_name.
     bool ok;
@@ -102,10 +100,11 @@ bool Kernel::parseStageOption(std::string o, std::string& stage,
     else
         ok = Stage::parseName(o, pos);
     if (!ok)
-        return false;
+        return ParseStageResult::Unknown;
+
     stage = o.substr(0, pos);
     if (pos >= o.length() || o[pos++] != '.')
-        return false;
+        return ParseStageResult::Unknown;
 
     // Get option name.
     std::string::size_type optionStart = pos;
@@ -115,13 +114,16 @@ bool Kernel::parseStageOption(std::string o, std::string& stage,
 
     // We've gotten a good option name, so return true, even if the value
     // is missing.  The caller can handle the missing value if desired.
-    if (pos >= o.length() || o[pos++] != '=')
-        return true;
+    if (pos >= o.length())
+        return ParseStageResult::Ok;
 
-    // The command-line parser takes care of quotes around an argument
-    // value and such.  May want to do something to handle escaped characters?
-    value = o.substr(pos);
-    return true;
+    if (o[pos++] == '=')
+    {
+        value = o.substr(pos);
+        if (value.size())
+            return ParseStageResult::Ok;
+    }
+    return ParseStageResult::Invalid;
 }
 
 
@@ -132,56 +134,69 @@ std::ostream& operator<<(std::ostream& ostr, const Kernel& kernel)
 }
 
 
-void Kernel::doSwitches(const StringList& cmdArgs, ProgramArgs& args)
+StringList Kernel::extractStageOptions(const StringList& cmdArgs)
 {
-    OptionsMap& stageOptions = m_manager.stageOptions();
     StringList stringArgs;
+    OptionsMap& stageOptions = m_manager.stageOptions();
 
     // Scan the argument vector for extra stage options.  Pull them out and
     // stick them in the list.  Let the ProgramArgs handle everything else.
     // NOTE: This depends on the format being "option=value" rather than
     //   "option value".  This is what we've always expected, so no problem,
     //   but it would be better to be more flexible.
-    for (size_t i = 0; i < cmdArgs.size(); ++i)
+    for (auto it = cmdArgs.begin(); it != cmdArgs.end(); ++it)
     {
-        std::string stageName, opName, value;
+        const std::string& cmd = *it;
 
-        if (parseStageOption(cmdArgs[i], stageName, opName, value))
+        std::string stageName, opName, value;
+        auto res = parseStageOption(cmd, stageName, opName, value);
+        if (res == ParseStageResult::Unknown)
+            stringArgs.push_back(cmd);
+        else if (res == ParseStageResult::Invalid)
+            throw pdal_error("Stage option '" + cmd + "' not valid.");
+        else  // ParseStageResult::Ok
         {
             if (value.empty())
             {
-                std::ostringstream oss;
-                oss << "Stage option '" << stageName << "." << opName <<
-                    "' must be specified " << " as --" << stageName << "." <<
-                    opName << "=<value>" << ".";
-                throw pdal_error(oss.str());
+                if (++it == cmdArgs.end())
+                    throw pdal_error("Stage option '" + stageName + "." +
+                        opName + "' has no value.");
+                value = *it;
             }
             Option op(opName, value);
             stageOptions[stageName].add(op);
         }
-        else
-            stringArgs.push_back(cmdArgs[i]);
     }
+    return stringArgs;
+}
+
+bool Kernel::doSwitches(const StringList& cmdArgs, ProgramArgs& args)
+{
+    StringList stringArgs = extractStageOptions(cmdArgs);
 
     try
     {
+        bool help;
+
         // parseSimple allows us to scan for the help option without
         // raising exception about missing arguments and so on.
         // It also removes consumed args from the arg list, so for now,
         // parse a copy that will be ignored by parse().
         ProgramArgs hargs;
-        hargs.add("help,h", "Print help message", m_showHelp);
+        hargs.add("help,h", "Print help message", help);
         hargs.parseSimple(stringArgs);
+        if (help)
+            return false;
 
         addBasicSwitches(args);
         addSwitches(args);
-        if (!m_showHelp)
-            args.parse(stringArgs);
+        args.parse(stringArgs);
     }
     catch (arg_error& e)
     {
         throw pdal_error(getName() + ": " + e.m_error);
     }
+    return true;
 }
 
 
@@ -191,16 +206,42 @@ int Kernel::doStartup()
 }
 
 
+// this just wraps ALL the code in total catch block
+int Kernel::run(const StringList& cmdArgs, LogPtr& log)
+{
+    m_log = log;
+    m_manager.setLog(m_log);
+
+    ProgramArgs args;
+
+    try
+    {
+        if (!doSwitches(cmdArgs, args))
+        {
+            outputHelp();
+            return 0;
+        }
+    }
+    catch (const pdal_error& e)
+    {
+        Utils::printError(e.what());
+        return 1;
+    }
+
+    int startup_status = doStartup();
+    if (startup_status)
+        return startup_status;
+
+    return doExecution(args);
+}
+
+
 int Kernel::doExecution(ProgramArgs& args)
 {
     if (m_hardCoreDebug)
-    {
-        int status = innerRun(args);
-        return status;
-    }
+        return innerRun(args);
 
     int status = 1;
-
     try
     {
         status = innerRun(args);
@@ -225,38 +266,6 @@ int Kernel::doExecution(ProgramArgs& args)
 }
 
 
-// this just wraps ALL the code in total catch block
-int Kernel::run(const StringList& cmdArgs, LogPtr& log)
-{
-    m_log = log;
-    m_manager.setLog(m_log);
-
-    ProgramArgs args;
-
-    try
-    {
-        doSwitches(cmdArgs, args);
-    }
-    catch (const pdal_error& e)
-    {
-        Utils::printError(e.what());
-        return 1;
-    }
-
-    if (m_showHelp)
-    {
-        outputHelp(args);
-        return 0;
-    }
-
-    int startup_status = doStartup();
-    if (startup_status)
-        return startup_status;
-
-    return doExecution(args);
-}
-
-
 int Kernel::innerRun(ProgramArgs& args)
 {
     try
@@ -267,7 +276,7 @@ int Kernel::innerRun(ProgramArgs& args)
     catch (pdal_error& e)
     {
         Utils::printError(e.what());
-        outputHelp(args);
+        outputHelp();
         return -1;
     }
 
@@ -275,15 +284,21 @@ int Kernel::innerRun(ProgramArgs& args)
 }
 
 
-void Kernel::outputHelp(ProgramArgs& args)
+void Kernel::outputHelp()
 {
+    ProgramArgs basicArgs;
+    addBasicSwitches(basicArgs);
+
+    ProgramArgs args;
+    addSwitches(args);
+
     std::cout << "usage: " << "pdal " << getShortName() << " [options] " <<
         args.commandLine() << std::endl;
 
+    std::cout << "standard options:" << std::endl;
+    basicArgs.dump(std::cout, 2, Utils::screenWidth());
     std::cout << "options:" << std::endl;
     args.dump(std::cout, 2, Utils::screenWidth());
-
-    //ABELL - Fix me.
 
     std::cout <<"\nFor more information, see the full documentation for "
         "PDAL at http://pdal.io/\n" << std::endl;
@@ -292,10 +307,13 @@ void Kernel::outputHelp(ProgramArgs& args)
 
 void Kernel::addBasicSwitches(ProgramArgs& args)
 {
+    static bool s_help;
+
     args.add("developer-debug",
         "Enable developer debug (don't trap exceptions)", m_hardCoreDebug);
     args.add("label", "A string to label the process with", m_label);
     args.add("driver", "Override reader driver", m_driverOverride);
+    args.add("help", "Print help and exit", s_help);
 }
 
 Stage& Kernel::makeReader(const std::string& inputFile, std::string driver)
@@ -344,8 +362,8 @@ Stage& Kernel::makeWriter(const std::string& outputFile, Stage& parent,
 }
 
 
-bool Kernel::test_parseStageOption(std::string o, std::string& stage,
-    std::string& option, std::string& value)
+Kernel::ParseStageResult Kernel::test_parseStageOption(
+    std::string o, std::string& stage, std::string& option, std::string& value)
 {
     class TestKernel : public Kernel
     {

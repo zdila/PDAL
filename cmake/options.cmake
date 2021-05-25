@@ -12,30 +12,20 @@ option(BUILD_PLUGIN_CPD
 add_feature_info("CPD plugin" BUILD_PLUGIN_CPD
     "Coherent Point Drift (CPD) computes rigid or nonrigid transformations between point sets")
 
-option(BUILD_PLUGIN_DELAUNAY
-    "Choose if the Delaunay triangulation filter should be built" FALSE)
-add_feature_info("Delaunay plugin" BUILD_PLUGIN_DELAUNAY
-    "perform Delaunay triangulation of point cloud")
-
-option(BUILD_PLUGIN_GEOWAVE
-    "Choose if GeoWave support should be built" FALSE)
-add_feature_info("GeoWave plugin" BUILD_PLUGIN_GEOWAVE
-    "Read and Write data using GeoWave")
-
 option(BUILD_PLUGIN_I3S
     "Choose if I3S and SLPK support should be built" FALSE)
 add_feature_info("I3S plugin" BUILD_PLUGIN_I3S
     "Read from a I3S server or from a SLPK file")
 
-option(BUILD_PLUGIN_GREYHOUND
-    "Choose if Greyhound support should be built" FALSE)
-add_feature_info("Greyhound plugin" BUILD_PLUGIN_GREYHOUND
-    "read points from a Greyhound server")
-
 option(BUILD_PLUGIN_ICEBRIDGE
     "Choose if Icebridge support should be built" FALSE)
 add_feature_info("Icebridge plugin" BUILD_PLUGIN_ICEBRIDGE
     "read data in the Icebridge format")
+
+option(BUILD_PLUGIN_HDF
+    "Choose if HDF support should be built" FALSE)
+add_feature_info("HDF plugin" BUILD_PLUGIN_HDF
+    "read data in the HDF format")
 
 option(BUILD_PLUGIN_MATLAB
     "Choose if Matlab support should be built" FALSE)
@@ -62,21 +52,12 @@ option(BUILD_PLUGIN_OCI
 add_feature_info("Oracle OCI plugin" BUILD_PLUGIN_OCI
     "Read/write point clould patches to Oracle")
 
-option(BUILD_PLUGIN_PCL "Choose if PCL support should be built" FALSE)
-add_feature_info("PCL plugin" BUILD_PLUGIN_PCL
-    "provides PCL-based readers, writers, filters, and kernels")
-
 find_package(PostgreSQL QUIET)
 option(BUILD_PLUGIN_PGPOINTCLOUD
     "Choose if PostgreSQL PointCloud support should be built"
     ${POSTGRESQL_FOUND})
 add_feature_info("PostgreSQL PointCloud plugin" BUILD_PLUGIN_PGPOINTCLOUD
     "read/write PostgreSQL PointCloud objects")
-
-option(BUILD_PLUGIN_SQLITE
-    "Choose if SQLite database support should be built" FALSE)
-add_feature_info("SQLite plugin" BUILD_PLUGIN_SQLITE
-    "read/write SQLite objects")
 
 option(BUILD_PLUGIN_RIVLIB
     "Choose if RiVLib support should be built" FALSE)
@@ -88,11 +69,6 @@ option(BUILD_PLUGIN_RDBLIB
 add_feature_info("rdblib plugin" BUILD_PLUGIN_RDBLIB
     "read data in the RDB format")
 
-option(BUILD_PLUGIN_PYTHON
-    "Choose if Python support should be built" FALSE)
-add_feature_info("Python plugin" BUILD_PLUGIN_PYTHON
-    "add features that depend on python")
-
 option(BUILD_PLUGIN_MBIO
     "Choose if MBIO support should be built" FALSE)
 add_feature_info("MBIO plugin" BUILD_PLUGIN_MBIO
@@ -102,6 +78,21 @@ option(BUILD_PLUGIN_FBX
     "Choose if FBX support should be built" FALSE)
 add_feature_info("FBX plugin" BUILD_PLUGIN_FBX
     "add features that depend on FBX")
+
+option(BUILD_PLUGIN_TEASER
+    "Choose if TEASER++ support should be built" FALSE)
+add_feature_info("TEASER++ plugin" BUILD_PLUGIN_TEASER
+    "TEASER++ computes transformations between point sets")
+
+option(BUILD_PLUGIN_TILEDB
+    "Choose if TileDB support should be built" FALSE)
+add_feature_info("TileDB plugin" BUILD_PLUGIN_TILEDB
+    "read/write data from TileDB")
+
+option(BUILD_PLUGIN_E57
+        "Choose if e57 ui support should be built" FALSE)
+add_feature_info("E57 plugin" BUILD_PLUGIN_E57
+        "read/write data to and from e57 format")
 
 option(BUILD_TOOLS_NITFWRAP "Choose if nitfwrap tool should be built" FALSE)
 
@@ -123,9 +114,6 @@ include(CMakeDependentOption)
 cmake_dependent_option(BUILD_PGPOINTCLOUD_TESTS
     "Choose if PostgreSQL PointCloud tests should be built"
     ON "BUILD_PLUGIN_PGPOINTCLOUD; WITH_TESTS" OFF)
-cmake_dependent_option(BUILD_SQLITE_TESTS
-    "Choose if SQLite tests should be built"
-    ON "BUILD_PLUGIN_SQLITE; WITH_TESTS" OFF)
 cmake_dependent_option(BUILD_OCI_TESTS
     "Choose if OCI tests should be built"
     ON "BUILD_PLUGIN_OCI; WITH_TESTS" OFF)

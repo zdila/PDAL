@@ -41,7 +41,7 @@
 #endif
 
 #include <pdal/PDALUtils.hpp>
-#include <json/json.h>
+#include <nlohmann/json.hpp>
 
 namespace pdal
 {
@@ -68,6 +68,15 @@ void PipelineKernel::validateSwitches(ProgramArgs& args)
 
     if (m_inputFile.empty())
         throw pdal_error("Input filename required.");
+
+    if (m_stream && m_noStream)
+        throw pdal_error("Can't execute with 'stream' and 'nostream' options");
+    if (m_stream)
+        m_mode = ExecMode::Stream;
+    else if (m_noStream)
+        m_mode = ExecMode::Standard;
+    else
+        m_mode = ExecMode::PreferStream;
 }
 
 
@@ -93,10 +102,11 @@ void PipelineKernel::addSwitches(ProgramArgs& args)
     args.add("pointcloudschema", "dump PointCloudSchema XML output",
         m_PointCloudSchemaOutput).setHidden();
     args.add("stdin,s", "Read pipeline from standard input", m_usestdin);
-    args.add("stream", "This option is obsolete.", m_stream);
-    args.add("nostream", "Don't run in stream mode, even if technically "
-        "possible.", m_noStream);
+    args.add("stream", "Run in stream mode.  Error if not streamable.",
+        m_stream);
+    args.add("nostream", "Run in standard mode.", m_noStream);
     args.add("metadata", "Metadata filename", m_metadataFile);
+    args.add("dims", "Dimensions to be stored", m_dimNames);
 }
 
 
@@ -112,12 +122,14 @@ int PipelineKernel::execute()
 
     if (m_validate)
     {
-        Json::Value root;
+        NL::json root;
         // Validate the options of the pipeline we were
         // given, and once we succeed, we're done
         try
         {
             m_manager.readPipeline(m_inputFile);
+            if (!m_manager.hasReader())
+                throw pdal_error("Pipeline does not start with a reader.");
             m_manager.prepare();
             root["valid"] = true;
             root["error_detail"] = "";
@@ -130,19 +142,16 @@ int PipelineKernel::execute()
             root["streamable"] = false;
         }
         Utils::closeProgress(m_progressFd);
-        Json::StyledWriter writer;
-        std::cout << writer.write(root);
+        std::cout << root.dump(4) << "\n";
         return 0;
     }
 
     m_manager.readPipeline(m_inputFile);
-    if (m_noStream || !m_manager.pipelineStreamable())
-        m_manager.execute();
-    else
-    {
-        FixedPointTable table(10000);
-        m_manager.executeStream(table);
-    }
+    if (!m_manager.hasReader())
+        throw pdal_error("Pipeline does not start with a reader.");
+    m_manager.pointTable().layout()->setAllowedDims(m_dimNames);
+    if (m_manager.execute(m_mode).m_mode == ExecMode::None)
+        throw pdal_error("Couldn't run pipeline in requested execution mode.");
 
     if (m_metadataFile.size())
     {

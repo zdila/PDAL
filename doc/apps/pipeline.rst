@@ -4,8 +4,9 @@
 pipeline
 ********************************************************************************
 
-The ``pipeline`` command is used to execute :ref:`pipeline` JSON. The pipeline
-is run in stream mode if possible.  See :ref:`reading` or :ref:`pipeline` for
+The ``pipeline`` command is used to execute :ref:`pipeline` JSON. By default
+the pipeline is run in stream mode if possible, otherwise in standard mode.
+See :ref:`reading` or :ref:`pipeline` for
 more information.
 
 ::
@@ -15,6 +16,8 @@ more information.
 ::
 
   --input, -i               Input filename
+  --dims                    Limit loaded dimensions to this list. Note that X, Y and Z are
+      always loaded.
   --pipeline-serialization  Output file for pipeline serialization
   --validate                Validate but do not process the pipeline.
       Also reports whether a pipeline can be streamed.
@@ -23,8 +26,8 @@ more information.
       progress file.
   --stdin, -s               Read pipeline from standard input
   --metadata                Metadata filename
-  --nostream                Don't run in stream mode, even if technically
-      possible.
+  --stream                  Run in stream mode.  If not possible, exit.
+  --nostream                Run in standard mode.
 
 Substitutions
 ................................................................................

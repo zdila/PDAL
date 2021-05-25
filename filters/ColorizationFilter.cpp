@@ -36,9 +36,7 @@
 
 #include <pdal/PointView.hpp>
 #include <pdal/util/ProgramArgs.hpp>
-
-#include <gdal.h>
-#include <ogr_spatialref.h>
+#include <pdal/private/gdal/Raster.hpp>
 
 #include <array>
 
@@ -143,8 +141,6 @@ void ColorizationFilter::addArgs(ProgramArgs& args)
 
 void ColorizationFilter::initialize()
 {
-    gdal::registerDrivers();
-
     m_raster.reset(new gdal::Raster(m_rasterFilename));
     auto bandTypes = m_raster->getPDALDimensionTypes();
     m_raster->close();
@@ -153,6 +149,7 @@ void ColorizationFilter::initialize()
         m_dimSpec = { "Red", "Green", "Blue" };
 
     uint32_t defaultBand = 1;
+    m_bands.clear();
     for (std::string& dim : m_dimSpec)
     {
         try
@@ -169,7 +166,6 @@ void ColorizationFilter::initialize()
             throwError("invalid --dimensions option: '" + dim + "': " + what);
         }
     }
-
 }
 
 
@@ -219,9 +215,11 @@ bool ColorizationFilter::processOne(PointRef& point)
             point.setField(b.m_dim, data[i] * b.m_scale);
             ++i;
         }
-        return true;
     }
-    return false;
+
+    // always return true to retain all points inside OR outside the raster. the output bands of
+    // any points outside the raster are ignored.
+    return true;
 }
 
 

@@ -5,7 +5,7 @@
 
 cmake_minimum_required(VERSION 3.5)
 
-project(PDAL CXX C)
+project(PDAL VERSION 2.3.0 LANGUAGES CXX C)
 string(TOLOWER ${PROJECT_NAME} PROJECT_NAME_LOWER)
 
 set(ROOT_DIR "${PROJECT_SOURCE_DIR}")
@@ -26,16 +26,28 @@ mark_as_advanced(CMAKE_VERBOSE_MAKEFILE)
 # PDAL general settings
 #------------------------------------------------------------------------------
 
-# the next line is the ONLY place in the entire pdal system where
-# the version info is hard-coded
-set(PDAL_VERSION_STRING "1.8.0" CACHE STRING "PDAL version")
+#
+# Must be changed if there is an ABI change.  This builds the SONAME
+# that's embedded in the library itself.
+#
+set(PDAL_SOLIB_MAJOR 13)
+#
+# Change if there's a new release with no ABI change
+#
+set(PDAL_SOLIB_MINOR 0)
+#
+# Build number.  Increment for builds within minor versions.  Probably
+# always 0 for PDAL
+#
+set(PDAL_SOLIB_BUILD 0)
 
-DISSECT_VERSION()
-GET_OS_INFO()
-SET_INSTALL_DIRS()
 
-set(PDAL_API_VERSION "7")
-set(PDAL_BUILD_VERSION "8.0.0")
+set(PDAL_API_VERSION ${PDAL_SOLIB_MAJOR})
+set(PDAL_BUILD_VERSION
+    "${PDAL_SOLIB_MAJOR}.${PDAL_SOLIB_MINOR}.${PDAL_SOLIB_BUILD}")
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Name of C++ library
 
@@ -49,12 +61,11 @@ set(PDAL_BUILD_VERSION "8.0.0")
 # See below for the rest of the magic.
 #
 if (APPLE OR WIN32)
-    set(PDAL_LIB_NAME pdalcpp)
     set(PDAL_BASE_LIB_NAME pdalcpp)
 else()
-    set(PDAL_LIB_NAME pdalcpp)
     set(PDAL_BASE_LIB_NAME pdal_base)
 endif()
+set(PDAL_LIB_NAME pdalcpp)
 set(PDAL_UTIL_LIB_NAME pdal_util)
 set(PDAL_BOOST_LIB_NAME pdal_boost)
 set(PDAL_KAZHDAN_LIB_NAME pdal_kazhdan)
@@ -115,7 +126,6 @@ set(PDAL_BUILD_TYPE ${CMAKE_BUILD_TYPE})
 #------------------------------------------------------------------------------
 
 include(${PDAL_CMAKE_DIR}/gdal.cmake)
-include(${PDAL_CMAKE_DIR}/geos.cmake)
 include(${PDAL_CMAKE_DIR}/geotiff.cmake)  # Optional (not really)
 include(${PDAL_CMAKE_DIR}/lazperf.cmake)  # Optional
 include(${PDAL_CMAKE_DIR}/laszip.cmake)  # Optional
@@ -125,10 +135,10 @@ include(${PDAL_CMAKE_DIR}/lzma.cmake)
 include(${PDAL_CMAKE_DIR}/zstd.cmake)
 include(${PDAL_CMAKE_DIR}/test.cmake)
 include(${PDAL_CMAKE_DIR}/ctest.cmake)
-include(${PDAL_CMAKE_DIR}/json.cmake)
 include(${PDAL_CMAKE_DIR}/libxml2.cmake)
 include(${PDAL_CMAKE_DIR}/dimension.cmake)
 include(${PDAL_CMAKE_DIR}/arbiter.cmake)
+include(${PDAL_CMAKE_DIR}/nlohmann.cmake)
 include(${PDAL_CMAKE_DIR}/openssl.cmake) # Optional
 
 #------------------------------------------------------------------------------
@@ -178,9 +188,6 @@ add_subdirectory(dimbuilder)
 add_subdirectory(vendor/pdalboost)
 add_subdirectory(vendor/arbiter)
 add_subdirectory(vendor/kazhdan)
-if (NOT PDAL_HAVE_JSONCPP)
-    add_subdirectory(vendor/jsoncpp/dist)
-endif()
 add_subdirectory(pdal/util)
 add_subdirectory(tools)
 add_subdirectory(apps)
@@ -240,9 +247,14 @@ if (NOT PDAL_HAVE_LZMA)
 endif()
 if (NOT PDAL_HAVE_LAZPERF)
     file(GLOB LAZPERF_SRCS
-        ${PDAL_SRC_DIR}/compression/LazPerfCompression.cpp
         ${PDAL_SRC_DIR}/compression/LazPerfVlrCompression.cpp)
     list(REMOVE_ITEM SRCS ${LAZPERF_SRCS})
+endif()
+
+if (GDAL_VERSION VERSION_LESS 3.0.0)
+    file(GLOB PROJPIPELINE_FILTER_SRCS
+        ${PDAL_FILTERS_DIR}/ProjPipelineFilter.cpp)
+    list(REMOVE_ITEM SRCS ${PROJPIPELINE_FILTER_SRCS})
 endif()
 PDAL_ADD_LIBRARY(${PDAL_BASE_LIB_NAME} ${SRCS} ${RPLY_SRCS})
 
@@ -257,10 +269,9 @@ target_include_directories(${PDAL_BASE_LIB_NAME}
         ${PDAL_VENDOR_DIR}
         ${PDAL_VENDOR_DIR}/eigen
         ${PDAL_VENDOR_DIR}/pdalboost
-        ${PDAL_JSONCPP_INCLUDE_DIR}
         ${LIBXML2_INCLUDE_DIR}
         ${ZSTD_INCLUDE_DIRS}
-    INTERFACE
+        ${NLOHMANN_INCLUDE_DIR}
         ${GDAL_INCLUDE_DIR}
         ${LASZIP_INCLUDE_DIR}
 )
@@ -268,7 +279,6 @@ target_link_libraries(${PDAL_BASE_LIB_NAME}
     PRIVATE
         ${CMAKE_THREAD_LIBS_INIT}
         ${GDAL_LIBRARY}
-        ${GEOS_LIBRARY}
         ${GEOTIFF_LIBRARY}
         ${LASZIP_LIBRARY}
         ${LIBXML2_LIBRARIES}
@@ -280,7 +290,7 @@ target_link_libraries(${PDAL_BASE_LIB_NAME}
         ${PDAL_UTIL_LIB_NAME}
         ${PDAL_ARBITER_LIB_NAME}
         ${PDAL_KAZHDAN_LIB_NAME}
-        ${PDAL_JSONCPP_LIB_NAME}
+        ${LAZPERF_LIBRARY}
     INTERFACE
         ${PDAL_LIBDIR}
 )
@@ -334,28 +344,31 @@ install(DIRECTORY ${PDAL_INCLUDE_DIR}/pdal
     DESTINATION include
     FILES_MATCHING PATTERN "*.hpp"
     PATTERN "gitsha.h"
-    PATTERN "pdal/private" EXCLUDE
-    PATTERN "pdal/util/private" EXCLUDE
-    ${ZSTD_EXCLUDES}
-    ${ZLIB_EXCLUDES}
-    ${LZMA_EXCLUDES}
-    ${LAZPERF_EXCLUDES}
+#    PATTERN "pdal/private" EXCLUDE
+#    PATTERN "pdal/io/private" EXCLUDE
+#    PATTERN "pdal/pdal/private" EXCLUDE
+#    PATTERN "pdal/util/private" EXCLUDE
+#    PATTERN "pdal/filters/private" EXCLUDE
+#    ${ZSTD_EXCLUDES}
+#    ${ZLIB_EXCLUDES}
+#    ${LZMA_EXCLUDES}
+#    ${LAZPERF_EXCLUDES}
 )
 
 install(DIRECTORY ${PDAL_KERNELS_DIR}
     DESTINATION include/pdal
     FILES_MATCHING PATTERN "*.hpp"
-    PATTERN "private" EXCLUDE
+#    PATTERN "private" EXCLUDE
 )
 install(DIRECTORY ${PDAL_IO_DIR}
     DESTINATION include/pdal
     FILES_MATCHING PATTERN "*.hpp"
-    PATTERN "private" EXCLUDE
+#    PATTERN "private" EXCLUDE
 )
 install(DIRECTORY ${PDAL_FILTERS_DIR}
     DESTINATION include/pdal
     FILES_MATCHING PATTERN "*.hpp"
-    PATTERN "private" EXCLUDE
+#    PATTERN "private" EXCLUDE
 )
 
 install(FILES ${DIMENSION_OUTFILE} ${pdal_features_hpp}
@@ -381,6 +394,18 @@ install(
     DESTINATION
         "${PDAL_LIB_INSTALL_DIR}/cmake/PDAL")
 include(${PDAL_CMAKE_DIR}/config.cmake)
+
+#
+# Allow downstream cmake projects to find PDAL header files without
+# being explicit.
+#
+target_include_directories(${PDAL_BASE_LIB_NAME}
+    INTERFACE
+        $<INSTALL_INTERFACE:include>)
+target_include_directories(${PDAL_UTIL_LIB_NAME}
+    INTERFACE
+        $<INSTALL_INTERFACE:include>)
+
 feature_summary(WHAT ALL INCLUDE_QUIET_PACKAGES)
 
 # TODO: move under scripts/bash-completion ?

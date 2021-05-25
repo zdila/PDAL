@@ -37,9 +37,11 @@
 #include <unordered_map>
 #include <set>
 
+#include <pdal/pdal_export.hpp>
 #include <pdal/private/SimpleHexGrid.hpp>
 
 #include "Hexer.hpp"
+
 #include "exception.hpp"
 #include "Hexagon.hpp"
 #include "Path.hpp"
@@ -65,13 +67,16 @@ public:
             delete m_paths[i];
     }
 
+    void findShapes();
+    void findParentPaths();
+    void toWKT(std::ostream&) const;
+
     bool dense(Hexagon *h);
     void addPoint(double x, double y)
         { addPoint(Point(x, y)); }
     void addPoint(Point p);
     void processSample();
-    void findShapes();
-    void findParentPaths();
+
     void extractShapes();
     void dumpInfo();
     void drawHexagons();
@@ -85,7 +90,6 @@ public:
         { return m_paths; }
     void setSampleSize(unsigned sampleSize)
         { m_maxSample = sampleSize; }
-    void toWKT(std::ostream&) const;
     size_t densePointCount() const;
 
 private:

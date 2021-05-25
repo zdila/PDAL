@@ -53,30 +53,17 @@ std::string StageFactory::inferReaderDriver(const std::string& filename)
 {
     std::string ext;
 
-    static const std::vector<std::string> protocols {
-        "ept",
-        "greyhound",
-        "i3s"
-    };
+    if (Utils::endsWith(filename, "ept.json") || Utils::startsWith(filename, "ept://"))
+        return "readers.ept";
+    if (Utils::startsWith(filename, "i3s://"))
+        return "readers.i3s";
 
-
-    const auto protocol = std::find_if(protocols.begin(), protocols.end(),
-            [&filename](std::string protocol)
-            {
-                const std::string search(protocol + "://");
-                return Utils::iequals(filename.substr(0, search.size()),
-                        search);
-            });
-
-    if (protocol != protocols.end())
-        ext = "." + *protocol;
-    else
-        ext = FileUtils::extension(filename);
+    ext = FileUtils::extension(filename);
     // Strip off '.' and make lowercase.
-    if (ext.length())
+    if (ext.length() > 1)
         ext = Utils::tolower(ext.substr(1));
-    PluginManager<Stage>& mgr = PluginManager<Stage>::get();
-    return mgr.extensions().defaultReader(ext);
+
+    return PluginManager<Stage>::extensions().defaultReader(ext);
 }
 
 
@@ -88,28 +75,25 @@ std::string StageFactory::inferReaderDriver(const std::string& filename)
 */
 std::string StageFactory::inferWriterDriver(const std::string& filename)
 {
+    std::string lFilename = Utils::tolower(filename);
+    if (lFilename == "devnull" || lFilename == "/dev/null")
+        return "writers.null";
+
     std::string ext;
-
-    static const std::string ghPrefix("greyhound://");
-
-    if (filename == "STDOUT")
+    if (lFilename == "stdout")
         ext = ".txt";
-    else if (Utils::iequals(filename.substr(0, ghPrefix.size()), ghPrefix))
-        ext = ".greyhound";      // Make it look like an extension.
     else
-        ext = Utils::tolower(FileUtils::extension(filename));
+        ext = Utils::tolower(FileUtils::extension(lFilename));
     // Strip off '.' and make lowercase.
-    if (ext.length())
+    if (ext.length() > 1)
         ext = Utils::tolower(ext.substr(1));
 
-    PluginManager<Stage>& mgr = PluginManager<Stage>::get();
-    return mgr.extensions().defaultWriter(ext);
+    return PluginManager<Stage>::extensions().defaultWriter(ext);
 }
 
 
-StageFactory::StageFactory(bool ignored)
+StageFactory::StageFactory(bool /* legacy */)
 {
-    (void)ignored;
 }
 
 

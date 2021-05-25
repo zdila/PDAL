@@ -36,6 +36,7 @@
 
 #include <io/BufferReader.hpp>
 #include <pdal/StageFactory.hpp>
+#include <pdal/util/Utils.hpp>
 
 namespace pdal
 {
@@ -70,17 +71,11 @@ void SplitKernel::addSwitches(ProgramArgs& args)
 
 void SplitKernel::validateSwitches(ProgramArgs& args)
 {
-#ifdef WIN32
-    char pathSeparator = '\\';
-#else
-    char pathSeparator = '/';
-#endif
-
     if (m_length && m_capacity)
         throw pdal_error("Can't specify both length and capacity.");
     if (!m_length && !m_capacity)
         m_capacity = 100000;
-    if (m_outputFile.back() == pathSeparator)
+    if (m_outputFile.back() == Utils::dirSeparator)
         m_outputFile += m_inputFile;
 }
 
@@ -101,8 +96,6 @@ std::string makeFilename(const std::string& s, int i)
 
 int SplitKernel::execute()
 {
-    PointTable table;
-
     Stage& reader = makeReader(m_inputFile, m_driverOverride);
 
     Options filterOpts;
@@ -118,6 +111,8 @@ int SplitKernel::execute()
         filterOpts.add("capacity", m_capacity);
     }
     Stage& f = makeFilter(driver, reader, filterOpts);
+
+    ColumnPointTable table;
     f.prepare(table);
     PointViewSet pvSet = f.execute(table);
 

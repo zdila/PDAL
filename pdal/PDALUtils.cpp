@@ -33,17 +33,18 @@
 ****************************************************************************/
 
 #include <pdal/PDALUtils.hpp>
-#include <pdal/pdal_features.hpp>  // PDAL_ARBITER_ENABLED
 
-#ifdef PDAL_ARBITER_ENABLED
-    #include <arbiter/arbiter.hpp>
-#endif
+#include <arbiter/arbiter.hpp>
 
 #include <pdal/KDIndex.hpp>
 #include <pdal/PDALUtils.hpp>
 #include <pdal/PointView.hpp>
 #include <pdal/Options.hpp>
 #include <pdal/util/FileUtils.hpp>
+
+#ifndef _WIN32
+#include <dlfcn.h>
+#endif
 
 using namespace std;
 
@@ -178,15 +179,13 @@ void toJSON(const MetadataNode& m, std::ostream& o)
 namespace
 {
 
-#ifdef PDAL_ARBITER_ENABLED
 std::string tempFilename(const std::string& path)
 {
-    const std::string tempdir(arbiter::fs::getTempPath());
-    const std::string basename(arbiter::util::getBasename(path));
+    const std::string tempdir(arbiter::getTempPath());
+    const std::string basename(arbiter::getBasename(path));
 
-    return arbiter::util::join(tempdir, basename);
+    return arbiter::join(tempdir, basename);
 }
-#endif
 
 // RAII handling of a temp file to make sure file gets deleted.
 class TempFile
@@ -216,14 +215,11 @@ public:
 
     virtual ~ArbiterOutStream()
     {
-#ifdef PDAL_ARBITER_ENABLED
         close();
         arbiter::Arbiter a;
         a.put(m_remotePath, a.getBinary(m_localFile.filename()));
-#endif
     }
 
-private:
     std::string m_remotePath;
     TempFile m_localFile;
 };
@@ -235,20 +231,29 @@ public:
             std::ios::openmode mode) :
         m_localFile(localPath)
     {
-#ifdef PDAL_ARBITER_ENABLED
         arbiter::Arbiter a;
         a.put(localPath, a.getBinary(remotePath));
         open(localPath, mode);
-#else
-        throw pdal_error("Arbiter is not enabled for this configuration!");
-#endif
     }
 
-private:
     TempFile m_localFile;
 };
 
 }  // unnamed namespace
+
+uintmax_t fileSize(const std::string& path)
+{
+    uintmax_t size = 0;
+    if (isRemote(path))
+    {
+        std::unique_ptr<std::size_t> pSize = arbiter::Arbiter().tryGetSize(path);
+        if (pSize)
+            size = *pSize;
+    }
+    else
+        size = FileUtils::fileSize(path);
+    return size;
+}
 
 /**
   Create a file (may be on a supported remote filesystem).
@@ -261,12 +266,11 @@ std::ostream *createFile(const std::string& path, bool asBinary)
 {
     ostream *ofs(nullptr);
 
-#ifdef PDAL_ARBITER_ENABLED
-    arbiter::Arbiter a;
-    const bool remote(a.hasDriver(path) && a.isRemote(path));
-
-    if (remote)
+    if (isRemote(path))
     {
+        arbiter::Arbiter a;
+        if (!a.hasDriver(path))
+            return ofs;
         try
         {
             ofs = new ArbiterOutStream(tempFilename(path), path,
@@ -281,7 +285,6 @@ std::ostream *createFile(const std::string& path, bool asBinary)
         }
     }
     else
-#endif
         ofs = FileUtils::createFile(path, asBinary);
     return ofs;
 }
@@ -294,12 +297,34 @@ std::ostream *createFile(const std::string& path, bool asBinary)
   \param asBinary  Whether the file should be opened binary.
   \return  Pointer to stream opened for input.
 */
+
+bool isRemote(const std::string& path)
+{
+    const StringList prefixes
+        { "s3://", "gs://", "dropbox://", "http://", "https://" };
+
+    for (const string& prefix : prefixes)
+        if (Utils::startsWith(path, prefix))
+            return true;
+    return false;
+}
+
+
+std::string fetchRemote(const std::string& path)
+{
+    std::string temp = tempFilename(path);
+    arbiter::Arbiter a;
+    a.put(temp, a.getBinary(path));
+    return temp;
+}
+
 std::istream *openFile(const std::string& path, bool asBinary)
 {
-#ifdef PDAL_ARBITER_ENABLED
-    arbiter::Arbiter a;
-    if (a.hasDriver(path) && a.isRemote(path))
+    if (isRemote(path))
     {
+        arbiter::Arbiter a;
+        if (!a.hasDriver(path))
+            return nullptr;
         try
         {
             return new ArbiterInStream(tempFilename(path), path,
@@ -310,7 +335,6 @@ std::istream *openFile(const std::string& path, bool asBinary)
             return nullptr;
         }
     }
-#endif
     return FileUtils::openFile(path, asBinary);
 }
 
@@ -344,13 +368,11 @@ void closeFile(std::istream *in)
 */
 bool fileExists(const std::string& path)
 {
-#ifdef PDAL_ARBITER_ENABLED
-    arbiter::Arbiter a;
-    if (a.hasDriver(path) && a.isRemote(path) && a.exists(path))
+    if (isRemote(path))
     {
-        return true;
+        arbiter::Arbiter a;
+        return (a.hasDriver(path) && a.exists(path));
     }
-#endif
 
     // Arbiter doesn't handle our STDIN hacks.
     return FileUtils::fileExists(path);
@@ -360,32 +382,27 @@ double computeHausdorff(PointViewPtr srcView, PointViewPtr candView)
 {
     using namespace Dimension;
 
-    KD3Index srcIndex(*srcView);
-    srcIndex.build();
-
-    KD3Index candIndex(*candView);
-    candIndex.build();
+    KD3Index &srcIndex = srcView->build3dIndex();
+    KD3Index &candIndex = candView->build3dIndex();
 
     double maxDistSrcToCand = std::numeric_limits<double>::lowest();
     double maxDistCandToSrc = std::numeric_limits<double>::lowest();
 
-    for (PointId i = 0; i < srcView->size(); ++i)
+    for (PointRef p : *srcView)
     {
-        std::vector<PointId> indices(1);
+        PointIdList indices(1);
         std::vector<double> sqr_dists(1);
-        PointRef srcPoint = srcView->point(i);
-        candIndex.knnSearch(srcPoint, 1, &indices, &sqr_dists);
+        candIndex.knnSearch(p, 1, &indices, &sqr_dists);
 
         if (sqr_dists[0] > maxDistSrcToCand)
             maxDistSrcToCand = sqr_dists[0];
     }
 
-    for (PointId i = 0; i < candView->size(); ++i)
+    for (PointRef q : *candView)
     {
-        std::vector<PointId> indices(1);
+        PointIdList indices(1);
         std::vector<double> sqr_dists(1);
-        PointRef candPoint = candView->point(i);
-        srcIndex.knnSearch(candPoint, 1, &indices, &sqr_dists);
+        srcIndex.knnSearch(q, 1, &indices, &sqr_dists);
 
         if (sqr_dists[0] > maxDistCandToSrc)
             maxDistCandToSrc = sqr_dists[0];
@@ -395,6 +412,105 @@ double computeHausdorff(PointViewPtr srcView, PointViewPtr candView)
     maxDistCandToSrc = std::sqrt(maxDistCandToSrc);
 
     return (std::max)(maxDistSrcToCand, maxDistCandToSrc);
+}
+
+std::pair<double, double> computeHausdorffPair(PointViewPtr viewA,
+                                               PointViewPtr viewB)
+{
+    // Computes both the max and mean of all nearest neighbor distances from
+    // each point in the PointView to those in the KD3Index.
+    auto compute = [](PointViewPtr view, KD3Index& index) {
+        double max_distance = std::numeric_limits<double>::lowest();
+        double M1(0.0);
+        for (PointRef p : *view)
+        {
+            PointIdList indices(1);
+            std::vector<double> sqr_dists(1);
+            index.knnSearch(p, 1, &indices, &sqr_dists);
+
+            if (sqr_dists[0] > max_distance)
+                max_distance = sqr_dists[0];
+
+            double delta = std::sqrt(sqr_dists[0]) - M1;
+            double delta_n = delta / (p.pointId() + 1);
+            M1 += delta_n;
+        }
+        max_distance = std::sqrt(max_distance);
+        return std::pair<double, double>{max_distance, M1};
+    };
+
+    // First, test from view A to view B...
+    KD3Index& indexB = viewB->build3dIndex();
+    std::pair<double, double> a2b = compute(viewA, indexB);
+
+    // then recompute from view B to view A.
+    KD3Index& indexA = viewA->build3dIndex();
+    std::pair<double, double> b2a = compute(viewB, indexA);
+
+    // The original Hausdorff metric is the max of the max distances from A to B
+    // and vice versa.
+    double original = (std::max)(a2b.first, b2a.first);
+
+    // The modified Hausdorff metric is the max of the mean distances from A to
+    // B and vice versa.
+    double modified = (std::max)(a2b.second, b2a.second);
+
+    // Return both the original and modified metrics.
+    return std::pair<double, double>{original, modified};
+}
+
+std::string dllDir()
+{
+    std::string s;
+
+#ifdef _WIN32
+    HMODULE hm = NULL;
+
+    if (GetModuleHandleEx(
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+        GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        (LPCSTR)&dllDir, &hm))
+    {
+        char path[MAX_PATH];
+        DWORD cnt = GetModuleFileNameA(hm, path, sizeof(path));
+        if (cnt > 0 && cnt < MAX_PATH)
+            s = path;
+    }
+#else
+    Dl_info info;
+    if (dladdr((const void *)dllDir, &info))
+        s = info.dli_fname;
+#endif
+    return FileUtils::getDirectory(s);
+}
+
+
+double computeChamfer(PointViewPtr srcView, PointViewPtr candView)
+{
+    using namespace Dimension;
+
+    KD3Index &srcIndex = srcView->build3dIndex();
+    KD3Index &candIndex = candView->build3dIndex();
+
+    double sum1(0.0);
+    for (PointRef p : *srcView)
+    {
+        PointIdList indices(1);
+        std::vector<double> sqr_dists(1);
+        candIndex.knnSearch(p, 1, &indices, &sqr_dists);
+        sum1 += sqr_dists[0];
+    }
+
+    double sum2(0.0);
+    for (PointRef q : *candView)
+    {
+        PointIdList indices(1);
+        std::vector<double> sqr_dists(1);
+        srcIndex.knnSearch(q, 1, &indices, &sqr_dists);
+        sum2 += sqr_dists[0];
+    }
+
+    return sum1 + sum2;
 }
 
 } // namespace Utils

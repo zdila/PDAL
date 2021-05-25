@@ -35,12 +35,9 @@
 
 #include <string>
 
-#include "ogr_api.h"
-#include "gdal.h"
-
-
 namespace pdal
 {
+
 namespace hexer
 {
     class HexGrid;
@@ -48,9 +45,11 @@ namespace hexer
 
 class OGR
 {
+    using OGRDataSourceH = void *;
+    using OGRLayerH = void *;
 
 public:
-    OGR(std::string const& filename, std::string srs,
+    OGR(std::string const& filename, const std::string& srs,
         std::string driver = "ESRI Shapefile", std::string layerName ="");
     ~OGR();
 
@@ -60,13 +59,12 @@ public:
 private:
     std::string m_filename;
     std::string m_driver;
-    std::string m_srs;
 
     OGRDataSourceH m_ds;
     OGRLayerH m_layer;
     std::string m_layerName;
 
-    void createLayer();
+    void createLayer(const std::string& wkt);
 };
 
 } // namespace pdal

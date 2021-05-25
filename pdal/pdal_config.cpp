@@ -47,8 +47,6 @@
 #include <gdal.h>
 #pragma clang diagnostic pop
 
-#include <geos_c.h>
-
 #ifdef PDAL_HAVE_LIBXML2
 #include <libxml/xmlversion.h>
 #endif
@@ -95,16 +93,6 @@ bool hasFeature(Feature f)
         enabled = true;
 #endif
         break;
-    case Feature::PYTHON:
-#ifdef PDAL_HAVE_PYTHON
-        enabled = true;
-#endif
-        break;
-    case Feature::ARBITER:
-#ifdef PDAL_HAVE_ARBITER
-        enabled = true;
-#endif
-        break;
     default:
         break;
     }
@@ -132,7 +120,7 @@ int versionPatch()
 
 std::string versionString()
 {
-    return std::string(PDAL_VERSION_STRING);
+    return std::string(PDAL_VERSION);
 }
 
 int versionInteger()
@@ -155,7 +143,7 @@ std::string fullVersionString()
     if (!Utils::iequals(sha, "Release"))
         sha = sha.substr(0,6);
 
-    os << PDAL_VERSION_STRING << " (git-version: " << sha << ")";
+    os << PDAL_VERSION << " (git-version: " << sha << ")";
 
     return os.str();
 }
@@ -183,9 +171,6 @@ std::string debugInformation()
 
     os << "Enabled libraries" << std::endl;
     os << headline << std::endl << std::endl;
-
-    os << "GEOS (" << GEOS_VERSION << ") - " <<
-        "http://trac.osgeo.org/geos" << std::endl;
 
     os << "GDAL (" << GDALVersionInfo("RELEASE_NAME") << ") - " <<
         "http://www.gdal.org" << std::endl;

@@ -43,7 +43,6 @@
 #include <pdal/PipelineReaderJSON.hpp>
 #include <pdal/Writer.hpp>
 #include <pdal/util/FileUtils.hpp>
-#include <json/json.h>
 
 #include <memory>
 #include <string>
@@ -88,8 +87,23 @@ void TranslateKernel::addSwitches(ProgramArgs& args)
         m_metadataFile);
     args.add("reader,r", "Reader type", m_readerType);
     args.add("writer,w", "Writer type", m_writerType);
-    args.add("nostream", "Don't run in stream mode, even if technically "
-        "possible.", m_noStream);
+    args.add("nostream", "Run in standard mode", m_noStream);
+    args.add("stream", "Run in stream mode.  Error if not possible.", m_stream);
+    args.add("dims", "Dimensions to store", m_dimNames);
+}
+
+
+void TranslateKernel::validateSwitches(ProgramArgs&)
+{
+    if (m_stream && m_noStream)
+        throw pdal_error("Can't specify both 'stream' and 'nostream' options.");
+
+    if (m_stream)
+        m_mode = ExecMode::Stream;
+    else if (m_noStream)
+        m_mode = ExecMode::Standard;
+    else
+        m_mode = ExecMode::PreferStream;
 }
 
 
@@ -159,7 +173,7 @@ void TranslateKernel::makeArgPipeline()
 
     // add each filter provided on the command-line,
     // updating the stage pointer
-    for (auto const f : m_filterType)
+    for (auto const& f : m_filterType)
     {
         std::string filter_name(f);
 
@@ -210,15 +224,10 @@ int TranslateKernel::execute()
         return 0;
     }
 
-    if (m_noStream || !m_manager.pipelineStreamable())
-    {
-        m_manager.execute();
-    }
-    else
-    {
-        FixedPointTable t(10000);
-        m_manager.executeStream(t);
-    }
+    m_manager.pointTable().layout()->setAllowedDims(m_dimNames);
+    if (m_manager.execute(m_mode).m_mode == ExecMode::None)
+        throw pdal_error("Couldn't run translation pipeline in requested "
+            "execution mode.");
 
     if (metaOut)
     {

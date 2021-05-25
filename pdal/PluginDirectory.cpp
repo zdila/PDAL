@@ -33,6 +33,7 @@
 ****************************************************************************/
 
 #include <pdal/PluginDirectory.hpp>
+#include <pdal/util/Algorithm.hpp>
 #include <pdal/util/FileUtils.hpp>
 #include <pdal/pdal_config.hpp>
 
@@ -42,17 +43,6 @@ namespace pdal
 namespace
 {
 
-#if defined(__APPLE__) && defined(__MACH__)
-    static const std::string dynamicLibraryExtension(".dylib");
-    static const char pathSeparator(':');
-#elif defined _WIN32
-    static const std::string dynamicLibraryExtension(".dll");
-    static const char pathSeparator(';');
-#else
-    static const std::string dynamicLibraryExtension(".so");
-    static const char pathSeparator(':');
-#endif
-
 StringList pluginSearchPaths()
 {
     StringList searchPaths;
@@ -61,17 +51,18 @@ StringList pluginSearchPaths()
     Utils::getenv("PDAL_DRIVER_PATH", envOverride);
 
     if (!envOverride.empty())
-        searchPaths = Utils::split2(envOverride, pathSeparator);
+        searchPaths = Utils::split2(envOverride, Utils::pathListSeparator);
     else
     {
-        StringList standardPaths { ".", "./lib", "../lib", "./bin", "../bin" };
-        for (std::string& s : standardPaths)
+        StringList possiblePaths { ".", "./lib", "../lib", "./bin", "../bin", Utils::dllDir(),
+            Config::pluginInstallPath() };
+
+        for (std::string s : possiblePaths)
         {
-            if (FileUtils::toAbsolutePath(s) !=
-                FileUtils::toAbsolutePath(Config::pluginInstallPath()))
+            s = FileUtils::toCanonicalPath(s);
+            if (s.size() && !Utils::contains(searchPaths, s))
                 searchPaths.push_back(s);
         }
-        searchPaths.push_back(Config::pluginInstallPath());
     }
     return searchPaths;
 }
@@ -108,7 +99,8 @@ std::string validPlugin(const std::string& path, const StringList& types)
 
     // Strip the extension off of the end.
     pos = file.rfind('.');
-    if (pos == std::string::npos || file.substr(pos) != dynamicLibraryExtension)
+    if (pos == std::string::npos ||
+        (file.substr(pos) != Utils::dynamicLibExtension))
         return std::string();
     file = file.substr(0, pos);
 
@@ -145,11 +137,6 @@ PluginDirectory::PluginDirectory()
                 m_drivers.insert(std::make_pair(plugin, file));
         }
     }
-}
-
-StringList PluginDirectory::test_pluginSearchPaths()
-{
-    return pluginSearchPaths();
 }
 
 std::string PluginDirectory::test_validPlugin(const std::string& path,

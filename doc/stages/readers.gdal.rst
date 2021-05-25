@@ -21,21 +21,17 @@ Basic Example
 Simply writing every pixel of a JPEG to a text file is not very useful.
 
 .. code-block:: json
-    :linenos:
 
-    {
-      "pipeline":[
-        {
+  [
+      {
           "type":"readers.gdal",
           "filename":"./pdal/test/data/autzen/autzen.jpg"
-        },
-        {
+      },
+      {
           "type":"writers.text",
           "filename":"outputfile.txt"
-        }
-      ]
-    }
-
+      }
+  ]
 
 
 LAS Example
@@ -47,23 +43,18 @@ RGB values of an `ASPRS LAS`_ file using :ref:`writers.las`.
 .. _`ASPRS LAS`: http://www.asprs.org/Committee-General/LASer-LAS-File-Format-Exchange-Activities.html
 
 .. code-block:: json
-    :linenos:
 
-    {
-      "pipeline":[
-        {
+  [
+      {
           "type":"readers.gdal",
           "filename":"./pdal/test/data/autzen/autzen.jpg",
-          "header", "Red, Green, Blue"
-
-        },
-        {
-          "type":"writers.text",
-          "filename":"outputfile.txt"
-        }
-      ]
-    }
-
+          "header": "Red, Green, Blue"
+      },
+      {
+          "type":"writers.las",
+          "filename":"outputfile.las"
+      }
+  ]
 
 
 Options
@@ -72,11 +63,11 @@ Options
 filename
   `GDALOpen`_ 'able raster file to read [Required]
 
-.. _`GDALOpen`: http://www.gdal.org/gdal_8h.html#a6836f0f810396c5e45622c8ef94624d4
+.. _`GDALOpen`: https://gdal.org/api/raster_c_api.html#gdal_8h_1aca05455472359964151f9c891d678d5e
 
 .. include:: reader_opts.rst
 
 header
-    A comma-separated list of :ref:`dimensions` IDs to map
+    A comma-separated list of :ref:`dimension <dimensions>` IDs to map
     bands to. The length of the list must match the number
     of bands in the raster.

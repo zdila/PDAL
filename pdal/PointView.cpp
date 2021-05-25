@@ -36,8 +36,9 @@
 
 #include <pdal/KDIndex.hpp>
 #include <pdal/PointView.hpp>
-#include <pdal/PointViewIter.hpp>
 #include <pdal/util/Algorithm.hpp>
+
+#include "private/Raster.hpp"
 
 namespace pdal
 {
@@ -45,17 +46,17 @@ namespace pdal
 int PointView::m_lastId = 0;
 
 PointView::PointView(PointTableRef pointTable) : m_pointTable(pointTable),
-m_size(0), m_id(0)
+    m_layout(pointTable.layout()), m_size(0), m_id(0)
 {
 	m_id = ++m_lastId;
 }
 
 PointView::PointView(PointTableRef pointTable, const SpatialReference& srs) :
-	m_pointTable(pointTable), m_size(0), m_id(0), m_spatialReference(srs)
+	m_pointTable(pointTable), m_layout(pointTable.layout()), m_size(0),
+    m_id(0), m_spatialReference(srs)
 {
 	m_id = ++m_lastId;
 }
-
 
 PointView::~PointView()
 {}
@@ -70,6 +71,22 @@ PointViewIter PointView::begin()
 PointViewIter PointView::end()
 {
     return PointViewIter(this, size());
+}
+
+
+PointId PointView::tableId(PointId idx)
+{
+    if (idx > size())
+        throw pdal_error("Point index must increment.");
+    if (idx == size())
+    {
+        PointId rawId = m_pointTable.addPoint();
+        m_index.push_back(rawId);
+        m_size++;
+        assert(m_temps.empty());
+        return rawId;
+    }
+    return m_index[idx];
 }
 
 
@@ -161,6 +178,30 @@ TriangularMesh *PointView::mesh(const std::string& name)
         return it->second.get();
     if (name.empty() && m_meshes.size())
         return m_meshes.begin()->second.get();
+    return nullptr;
+}
+
+
+Rasterd *PointView::createRaster(const std::string& name, const RasterLimits& limits,
+    double nodata)
+{
+    if (Utils::contains(m_rasters, name))
+        return nullptr;
+    Rasterd *r = new Rasterd(limits, name, nodata);
+    auto res = m_rasters.insert(std::make_pair(name, std::unique_ptr<Rasterd>(r)));
+    if (res.second)
+        return res.first->second.get();
+    return nullptr;
+}
+
+
+Rasterd *PointView::raster(const std::string& name)
+{
+    auto it = m_rasters.find(name);
+    if (it != m_rasters.end())
+        return it->second.get();
+    if (name.empty() && m_rasters.size())
+        return m_rasters.begin()->second.get();
     return nullptr;
 }
 

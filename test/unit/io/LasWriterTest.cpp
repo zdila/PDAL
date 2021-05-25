@@ -46,7 +46,6 @@
 #include <io/LasReader.hpp>
 #include <io/LasWriter.hpp>
 #include <io/BpfReader.hpp>
-
 #include "Support.hpp"
 
 namespace pdal
@@ -69,6 +68,7 @@ public:
 
 using namespace pdal;
 
+
 TEST(LasWriterTest, srs)
 {
     Options readerOps;
@@ -89,7 +89,7 @@ TEST(LasWriterTest, srs)
 
     LasTester tester;
     SpatialReference srs = tester.srs(writer);
-    EXPECT_EQ(srs, SpatialReference("EPSG:26915"));
+    EXPECT_EQ(srs, "EPSG:26915");
 }
 
 
@@ -114,7 +114,7 @@ TEST(LasWriterTest, srs2)
 
     LasTester tester;
     SpatialReference srs = tester.srs(writer);
-    EXPECT_EQ(srs, SpatialReference("EPSG:32615"));
+    EXPECT_EQ(srs, "EPSG:32615");
 }
 
 
@@ -176,14 +176,11 @@ TEST(LasWriterTest, auto_offset)
     reader.setOptions(readerOps);
 
     reader.prepare(readTable);
-    EXPECT_DOUBLE_EQ(25.00, reader.header().offsetX());
+    EXPECT_DOUBLE_EQ((1000000.02 + 25) * 0.5, reader.header().offsetX());
     EXPECT_DOUBLE_EQ(0, reader.header().offsetY());
-    EXPECT_DOUBLE_EQ(-123, reader.header().offsetZ());
+    EXPECT_DOUBLE_EQ(-123 * 0.5 + 2147483524 * 0.5, reader.header().offsetZ());
 
-    EXPECT_DOUBLE_EQ(0.00046564965530561733, reader.header().scaleX());
-    EXPECT_DOUBLE_EQ(.01, reader.header().scaleY());
     // (max - min) are chosen to yield std::numeric_limits<int>::max();
-    EXPECT_DOUBLE_EQ(1.0, reader.header().scaleZ());
 
     PointViewSet viewSet = reader.execute(readTable);
     EXPECT_EQ(viewSet.size(), 1u);
@@ -195,9 +192,10 @@ TEST(LasWriterTest, auto_offset)
     EXPECT_NEAR(25.00, view->getFieldAs<double>(Id::X, 3), .0001);
     EXPECT_NEAR(74529.00, view->getFieldAs<double>(Id::X, 4), .001);
     EXPECT_NEAR(534252.35, view->getFieldAs<double>(Id::X, 5), .0001);
-
+    EXPECT_NEAR(2147483524, view->getFieldAs<double>(Id::Z, 4), .0001);
     FileUtils::deleteFile(FILENAME);
 }
+
 
 // Identical to above, but writes each input view to a separate output file.
 TEST(LasWriterTest, auto_offset2)
@@ -260,14 +258,14 @@ TEST(LasWriterTest, auto_offset2)
         reader.setOptions(readerOps);
 
         reader.prepare(readTable);
-        EXPECT_DOUBLE_EQ(74529.00, reader.header().offsetX());
+        EXPECT_DOUBLE_EQ((74529.00 + 1000000.02) * 0.5, reader.header().offsetX());
         EXPECT_DOUBLE_EQ(0, reader.header().offsetY());
-        EXPECT_DOUBLE_EQ(-123, reader.header().offsetZ());
+        EXPECT_DOUBLE_EQ((-123 + 945.23) * 0.5, reader.header().offsetZ());
 
-        EXPECT_NEAR(4.30956e-4, reader.header().scaleX(), 1e-4);
+        EXPECT_NEAR(2.15478e-4, reader.header().scaleX(), 1e-4);
         EXPECT_DOUBLE_EQ(.01, reader.header().scaleY());
         // (max - min) are chosen to yield std::numeric_limits<int>::max();
-        EXPECT_NEAR(4.9743e-7, reader.header().scaleZ(), 1e-7);
+        EXPECT_NEAR(2.48716e-7, reader.header().scaleZ(), 1e-7);
 
         PointViewSet viewSet = reader.execute(readTable);
         EXPECT_EQ(viewSet.size(), 1u);
@@ -287,13 +285,13 @@ TEST(LasWriterTest, auto_offset2)
         reader.setOptions(readerOps);
 
         reader.prepare(readTable);
-        EXPECT_DOUBLE_EQ(25.0, reader.header().offsetX());
+        EXPECT_NEAR((534252.35 + 25.0) * 0.5, reader.header().offsetX(), 0.01);
         EXPECT_DOUBLE_EQ(0, reader.header().offsetY());
-        EXPECT_DOUBLE_EQ(1.5, reader.header().offsetZ());
+        EXPECT_NEAR((2147483524 + 1.5) * 0.5, reader.header().offsetZ(), 0.01);
 
-        EXPECT_NEAR(2.4876e-4, reader.header().scaleX(), 1e-7);
+        EXPECT_NEAR(1.2438e-4, reader.header().scaleX(), 1e-7);
         EXPECT_DOUBLE_EQ(.01, reader.header().scaleY());
-        EXPECT_NEAR(.99999, reader.header().scaleZ(), 1e-5);
+        EXPECT_NEAR(.49999, reader.header().scaleZ(), 1e-5);
 
         PointViewSet viewSet = reader.execute(readTable);
         EXPECT_EQ(viewSet.size(), 1u);
@@ -302,10 +300,88 @@ TEST(LasWriterTest, auto_offset2)
         EXPECT_NEAR(25.00, view->getFieldAs<double>(Id::X, 0), .0001);
         EXPECT_NEAR(74529.00, view->getFieldAs<double>(Id::X, 1), .001);
         EXPECT_NEAR(534252.35, view->getFieldAs<double>(Id::X, 2), .0001);
+        EXPECT_NEAR(2147483524, view->getFieldAs<double>(Id::Z, 1), .0001);
     }
 
     FileUtils::deleteFile(inname1);
     FileUtils::deleteFile(inname2);
+}
+
+
+// test autoscale with autooffset for a dataset with 0 variance in at least one
+// of it's spatial dimensions (e.g. points sampled from an axis alligned plane)
+TEST(LasWriterTest, auto_scale_with_auto_offset)
+{
+    using namespace Dimension;
+
+    const std::string FILENAME(
+        Support::temppath("autoscale_with_autooffset_test.las"));
+    PointTable table;
+
+    table.layout()->registerDims({Id::X, Id::Y, Id::Z});
+
+    BufferReader bufferReader;
+
+    // in 'Z' there is 0 variance which causes PDAL LasWriter to fail (scale is 0)
+    PointViewPtr view(new PointView(table));
+    // first point
+    view->setField(Id::X, 0, 780.00);
+    view->setField(Id::Y, 0, 240.00);
+    view->setField(Id::Z, 0, 25.00);
+    // second point
+    view->setField(Id::X, 1, 400.00);
+    view->setField(Id::Y, 1, 120.00);
+    view->setField(Id::Z, 1, 25.00);
+    // third point
+    view->setField(Id::X, 2, -250.00);
+    view->setField(Id::Y, 2, -660.76);
+    view->setField(Id::Z, 2, 25.00);
+
+    bufferReader.addView(view);
+
+    Options writerOps;
+    writerOps.add("filename", FILENAME);
+    writerOps.add("offset_x", "auto");
+    writerOps.add("offset_y", "auto");
+    writerOps.add("offset_z", "auto");
+    writerOps.add("scale_x", "auto");
+    writerOps.add("scale_y", "auto");
+    writerOps.add("scale_z", "auto");
+
+    LasWriter writer;
+    writer.setOptions(writerOps);
+    writer.setInput(bufferReader);
+
+    writer.prepare(table);
+    writer.execute(table);
+
+    Options readerOps;
+    readerOps.add("filename", FILENAME);
+
+    PointTable readTable;
+
+    LasReader reader;
+    reader.setOptions(readerOps);
+
+    reader.prepare(readTable);
+    EXPECT_DOUBLE_EQ((-250.00 + 780.00) * 0.5, reader.header().offsetX());
+    PointViewSet viewSet = reader.execute(readTable);
+    EXPECT_EQ(viewSet.size(), 1u);
+    view = *viewSet.begin();
+    EXPECT_EQ(view->size(), 3u);
+    // test first point
+    EXPECT_NEAR(780.00, view->getFieldAs<double>(Id::X, 0), .0001);
+    EXPECT_NEAR(240.00, view->getFieldAs<double>(Id::Y, 0), .0001);
+    EXPECT_NEAR(25.00, view->getFieldAs<double>(Id::Z, 0), .0001);
+    // test second point
+    EXPECT_NEAR(400.00, view->getFieldAs<double>(Id::X, 1), .0001);
+    EXPECT_NEAR(120.00, view->getFieldAs<double>(Id::Y, 1), .0001);
+    EXPECT_NEAR(25.00, view->getFieldAs<double>(Id::Z, 1), .0001);
+    // test third point
+    EXPECT_NEAR(-250.00, view->getFieldAs<double>(Id::X, 2), .0001);
+    EXPECT_NEAR(-660.76, view->getFieldAs<double>(Id::Y, 2), .0001);
+    EXPECT_NEAR(25.00, view->getFieldAs<double>(Id::Z, 2), .0001);
+    FileUtils::deleteFile(FILENAME);
 }
 
 
@@ -716,13 +792,13 @@ TEST(LasWriterTest, lazperf)
     EXPECT_EQ(view1->pointSize(), view2->pointSize());
 
    // Validate some point data.
-    std::unique_ptr<char> buf1(new char[pointSize]);
-    std::unique_ptr<char> buf2(new char[pointSize]);
+    std::vector<char> buf1(pointSize);
+    std::vector<char> buf2(pointSize);
     for (PointId i = 0; i < view1->pointSize(); i += 100)
     {
-       view1->getPackedPoint(dims, i, buf1.get());
-       view2->getPackedPoint(dims, i, buf2.get());
-       EXPECT_EQ(memcmp(buf1.get(), buf2.get(), pointSize), 0);
+       view1->getPackedPoint(dims, i, buf1.data());
+       view2->getPackedPoint(dims, i, buf2.data());
+       EXPECT_EQ(memcmp(buf1.data(), buf2.data(), pointSize), 0);
     }
 }
 #endif
@@ -784,13 +860,13 @@ TEST(LasWriterTest, laszip)
     EXPECT_EQ(view1->pointSize(), view2->pointSize());
 
    // Validate some point data.
-    std::unique_ptr<char> buf1(new char[pointSize]);
-    std::unique_ptr<char> buf2(new char[pointSize]);
+    std::vector<char> buf1(pointSize);
+    std::vector<char> buf2(pointSize);
     for (PointId i = 0; i < view1->size(); i += 100)
     {
-       view1->getPackedPoint(dims, i, buf1.get());
-       view2->getPackedPoint(dims, i, buf2.get());
-       EXPECT_EQ(memcmp(buf1.get(), buf2.get(), pointSize), 0);
+       view1->getPackedPoint(dims, i, buf1.data());
+       view2->getPackedPoint(dims, i, buf2.data());
+       EXPECT_EQ(memcmp(buf1.data(), buf2.data(), pointSize), 0);
     }
 }
 
@@ -854,14 +930,14 @@ TEST(LasWriterTest, laszip1_4)
     EXPECT_EQ(view1->pointSize(), view2->pointSize());
 
    // Validate some point data.
-    std::unique_ptr<char> buf1(new char[pointSize]);
-    std::unique_ptr<char> buf2(new char[pointSize]);
+    std::vector<char> buf1(pointSize);
+    std::vector<char> buf2(pointSize);
     for (PointId idx = 0; idx < view1->size(); idx++)
     {
-       view1->getPackedPoint(dims, idx, buf1.get());
-       view2->getPackedPoint(dims, idx, buf2.get());
-       char *b1 = buf1.get();
-       char *b2 = buf2.get();
+       view1->getPackedPoint(dims, idx, buf1.data());
+       view2->getPackedPoint(dims, idx, buf2.data());
+       char *b1 = buf1.data();
+       char *b2 = buf2.data();
        // Uncomment this to figure out the exact byte at which things are
        // broken.
        /**
@@ -882,7 +958,7 @@ TEST(LasWriterTest, laszip1_4)
            }
        }
        **/
-       EXPECT_EQ(memcmp(buf1.get(), buf2.get(), pointSize), 0);
+       EXPECT_EQ(memcmp(buf1.data(), buf2.data(), pointSize), 0);
     }
 }
 
@@ -1089,8 +1165,12 @@ TEST(LasWriterTest, fix1063_1064_1065)
 
     // https://github.com/PDAL/PDAL/issues/1065
     SpatialReference ref = v->spatialReference();
-    std::string wkt = "GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]]";
-    EXPECT_EQ(ref.getWKT(), wkt);
+    // This WKT is the leading common bit of WKT1 and WKT2 resolution.  When
+    // we're just doing WKT2, this can be improved.
+    std::string wkt {
+        R"(GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]])"
+    };
+    EXPECT_TRUE(Utils::startsWith(ref.getWKT(), wkt));
 }
 
 TEST(LasWriterTest, pdal_metadata)
@@ -1147,10 +1227,25 @@ TEST(LasWriterTest, pdal_add_vlr)
     Options readerOpts;
     readerOpts.add("filename", infile);
 
-    std::string vlr( " [ { \"description\": \"A description under 32 bytes\", \"record_id\": 42, \"user_id\": \"hobu\", \"data\": \"dGhpcyBpcyBzb21lIHRleHQ=\" },  { \"description\": \"A description under 32 bytes\", \"record_id\": 43, \"user_id\": \"hobu\", \"data\": \"dGhpcyBpcyBzb21lIG1vcmUgdGV4dA==\" } ]");
+    std::string vlr1(
+      R"({
+          "description": "A description under 32 bytes",
+          "record_id": 42,
+          "user_id": "hobu",
+          "data": "dGhpcyBpcyBzb21lIHRleHQ="
+         })"
+    );
+    std::string vlr2(
+      R"({
+          "description": "A description under 32 bytes",
+          "record_id": 43,
+          "user_id": "hobu",
+          "filename": ")" + Support::datapath("las/vlr-43.bin") + R"("})"
+    );
 
     Options writerOpts;
-    writerOpts.add("vlrs", vlr);
+    writerOpts.add("vlrs", vlr1);
+    writerOpts.add("vlrs", vlr2);
     writerOpts.add("filename", outfile);
 
     LasReader reader;
@@ -1175,10 +1270,148 @@ TEST(LasWriterTest, pdal_add_vlr)
 
     auto pred = [](MetadataNode temp)
         { return Utils::startsWith(temp.name(), "vlr_"); };
-    MetadataNodeList nodes = forward.findChildren(pred);
-    EXPECT_EQ(nodes.size(), 2UL);
+
+    MetadataNode root = reader2.getMetadata();
+    MetadataNodeList nodes = root.findChildren(pred);
+    EXPECT_EQ(nodes.size(), 2u);
+
+    MetadataNode node = nodes[1].findChild("data");
+    std::vector<uint8_t> buf =
+        Utils::base64_decode(node.value());
+
+
+    EXPECT_EQ(memcmp(buf.data(), "this is some more text",
+        buf.size() - 1), 0);
 }
 
+// Make sure we can read an array of VLRs in a pipeline.
+TEST(LasWriterTest, issue2937)
+{
+    std::string infile = Support::configuredpath("pipeline/issue2937.json");
+
+    std::string cmd = Support::binpath("pdal") + " pipeline --nostream " +
+        infile;
+    std::string output;
+    Utils::run_shell_command(cmd, output);
+
+    std::string outfile = Support::temppath("issue2937_out.las");
+    cmd = Support::binpath("pdal") + " info --metadata " + outfile;
+    Utils::run_shell_command(cmd, output);
+
+    EXPECT_NE(output.find("dGhpcyBpcy"), std::string::npos);
+    EXPECT_NE(output.find("dGhpcyAqdtB"), std::string::npos);
+}
+
+TEST(LasWriterTest, badVlr)
+{
+    auto doTest = [](const std::string& vlr, bool expectThrow = true)
+    {
+        Options opts;
+        opts.add("filename", Support::temppath("testfile"));
+        opts.add("vlrs", vlr);
+
+        LasWriter w;
+        w.setOptions(opts);
+
+        PointTable t;
+        if (expectThrow)
+            EXPECT_THROW(w.prepare(t), pdal_error);
+        else
+            EXPECT_NO_THROW(w.prepare(t));
+    };
+
+    doTest(
+      R"({
+        "description": "A description under 32 bytes",
+        "record_id": 42,
+        "user_id": "hobu",
+        "data": "dGhpcyBpcyBzb21lIHRleHQ="
+      })", false
+    );
+    doTest(
+      R"({
+        "description": "A description over 32 bytes is one that's way too long",
+        "record_id": 42,
+        "user_id": "hobu",
+        "data": "dGhpcyBpcyBzb21lIHRleHQ="
+      })"
+    );
+    doTest(
+      R"({
+        "description": "A description under 32 bytes",
+        "record_id": 42,
+        "data": "dGhpcyBpcyBzb21lIHRleHQ="
+      })"
+    );
+    doTest(
+      R"({
+        "description": "A description under 32 bytes",
+        "record_id": 42,
+        "user_id": "A userID that's way too long",
+        "data": "dGhpcyBpcyBzb21lIHRleHQ="
+      })"
+    );
+    doTest(
+      R"({
+        "description": "A description under 32 bytes",
+        "record_id": 42,
+        "user_id": "hobu"
+      })"
+    );
+    doTest(
+      R"({
+        "description": "A description under 32 bytes",
+        "record_id": 42.234,
+        "user_id": "hobu",
+        "data": "dGhpcyBpcyBzb21lIHRleHQ="
+      })"
+    );
+    doTest(
+      R"({
+        "description": "A description under 32 bytes",
+        "record_id": 422340,
+        "user_id": "hobu",
+        "data": "dGhpcyBpcyBzb21lIHRleHQ="
+      })"
+    );
+    doTest(
+      R"({
+        "description": "A description under 32 bytes",
+        "record_id": 42,
+        "user_id": "hobu",
+        "data": "dGhpcyBpcyBzb21lIHRleHQ="
+      } junk after valid VLR )"
+    );
+}
+
+TEST(LasWriterTest, evlrOffset)
+{
+    std::string outfile(Support::temppath("evlr.las"));
+
+    FileUtils::deleteFile(outfile);
+    {
+        LasWriter w;
+        Options wo;
+        std::vector<uint8_t> largeVlr(66000);
+        std::string vlr =
+            " { \"description\": \"A description under 32 bytes\", "
+            "\"record_id\": 42, \"user_id\": \"hobu\", \"data\": \"" +
+            Utils::base64_encode(largeVlr) + "\" }";
+        wo.add("vlrs", vlr);
+        wo.add("minor_version", 4);
+        wo.add("filename", outfile);
+        w.setOptions(wo);
+
+        PointTable t;
+        w.prepare(t);
+        w.execute(t);
+        LasTester tester;
+        LasHeader* h = tester.header(w);
+        // No points in the file
+        EXPECT_EQ(h->eVlrOffset(), h->pointOffset());
+        EXPECT_EQ(h->eVlrCount(), 1u);
+    }
+}
 
 // Make sure that we can forward the LAS_Spec/3 VLR
 TEST(LasWriterTest, forward_spec_3)
@@ -1235,9 +1468,22 @@ TEST(LasWriterTest, forward_spec_3)
             !temp.findChild(recPred).empty() &&
             !temp.findChild(userPred).empty();
     };
+    MetadataNode origRoot = reader.getMetadata();
+    MetadataNodeList origNodes = origRoot.findChildren(pred);
+    EXPECT_EQ(origNodes.size(), 1u);
+    MetadataNode origNode = origNodes[0];
+
     MetadataNode root = reader2.getMetadata();
     MetadataNodeList nodes = root.findChildren(pred);
     EXPECT_EQ(nodes.size(), 1u);
+    MetadataNode node = nodes[0];
+
+    // Also test that we're properly forwarding data.
+    origNode = origNode.findChild("data");
+    node = node.findChild("data");
+    EXPECT_EQ(origNode.value().size(), 28u);
+    EXPECT_EQ(node.value().size(), origNode.value().size());
+    EXPECT_EQ(node.value(), origNode.value());
 }
 
 TEST(LasWriterTest, oversize_vlr)
@@ -1295,13 +1541,84 @@ TEST(LasWriterTest, issue1940)
     EXPECT_DOUBLE_EQ(h->scaleY(), .01);
 }
 
+// Make sure that we can forward scale from multiple files if they match.
+TEST(LasWriterTest, issue2663)
+{
+    std::string outfile(Support::temppath("out.las"));
+    {
+        LasReader r1;
+        Options ro1;
+        ro1.add("filename", Support::datapath("las/prec3.las"));
+        r1.setOptions(ro1);
 
-#if defined(PDAL_HAVE_LAZPERF) || defined(PDAL_HAVE_LASZIP)
+        LasReader r2;
+        Options ro2;
+        ro2.add("filename", Support::datapath("las/prec3.las"));
+        r2.setOptions(ro2);
+
+        LasWriter w;
+        Options wo;
+        wo.add("filename", outfile);
+        wo.add("forward", "all");
+        w.setOptions(wo);
+        w.setInput(r1);
+        w.setInput(r2);
+
+        PointTable t;
+        w.prepare(t);
+        w.execute(t);
+    }
+
+    LasReader r;
+    Options ro;
+    ro.add("filename", outfile);
+    r.setOptions(ro);
+
+    PointTable t;
+    r.prepare(t);
+
+    const LasHeader& h = r.header();
+    EXPECT_EQ(h.scaleX(), .001);
+    EXPECT_EQ(h.scaleY(), .001);
+    EXPECT_EQ(h.scaleZ(), .001);
+}
+
+// Make sure that we don't crash when writing scan angle values >90 && <-90 in point
+// formats 6 or higher.
+TEST(LasWriterTest, issue3288)
+{
+    point_count_t cnt;
+
+    std::string infile(Support::datapath("text/largescan.txt"));
+    std::string tmpfile(Support::temppath("out.laz"));
+    FileUtils::deleteFile(tmpfile);
+    {
+        Options wopts;
+        wopts.add("dataformat_id", 6);
+        wopts.add("minor_version", 4);
+
+        PipelineManager mgr;
+        Stage& r = mgr.makeReader(infile, "readers.text");
+
+        mgr.makeWriter(tmpfile, "writers.las", r, wopts);
+        cnt = mgr.execute();
+    }
+
+    {
+        PipelineManager mgr;
+        mgr.makeReader(tmpfile, "readers.las");
+        EXPECT_EQ(cnt, mgr.execute());
+    }
+}
+
+
+#if defined(PDAL_HAVE_LASZIP)
 // Make sure that we can translate this special test data to 1.4, dataformat 6.
 TEST(LasWriterTest, issue2320)
 {
     std::string outfile(Support::temppath("2320.laz"));
 
+    FileUtils::deleteFile(outfile);
     {
         LasReader r;
         Options ro;
@@ -1338,63 +1655,50 @@ TEST(LasWriterTest, issue2320)
 }
 #endif
 
-/**
-
-namespace
+TEST(LasWriterTest, synthetic_points)
 {
+    using namespace Dimension;
 
-bool diffdump(const std::string& f1, const std::string& f2)
-{
-    auto dump = [](const std::string& temp, const std::string& in)
-    {
-        std::stringstream ss;
-        ss << "lasdump -o " << temp << " " << in;
-        system(ss.str().c_str());
-    };
-
-    std::string t1 = Support::temppath("lasdump1.tmp");
-    std::string t2 = Support::temppath("lasdump2.tmp");
-
-    dump(t1, f1);
-    dump(t2, f2);
-
-    std::string diffFile = Support::temppath("dumpdiff.tmp");
-    std::stringstream ss;
-    ss << "diff " << t1 << " " << t2 << " > " << diffFile;
-    system(ss.str().c_str());
-
-    return true;
-}
-
-} // Unnamed namespace
-
-TEST(LasWriterTest, simple)
-{
+    const std::string FILENAME(Support::temppath("synthetic_test.las"));
     PointTable table;
 
-    std::string infile(Support::datapath("las/1.2-with-color.las"));
-    std::string outfile(Support::temppath("simple.las"));
+    table.layout()->registerDims({Id::X, Id::Y, Id::Z, Id::Classification});
 
-    // remove file from earlier run, if needed
-    FileUtils::deleteFile(outfile);
+    BufferReader bufferReader;
 
-    Options readerOpts;
-    readerOpts.add("filename", infile);
+    PointViewPtr view(new PointView(table));
+    view->setField(Id::X, 0, 1.0);
+    view->setField(Id::Y, 0, 2.0);
+    view->setField(Id::Z, 0, 3.0);
+    view->setField(Id::Classification, 0, ClassLabel::Ground | ClassLabel::Synthetic);
+    bufferReader.addView(view);
 
-    Options writerOpts;
-    writerOpts.add("creation_year", 2014);
-    writerOpts.add("filename", outfile);
-
-    LasReader reader;
-    reader.setOptions(readerOpts);
+    Options writerOps;
+    writerOps.add("filename", FILENAME);
 
     LasWriter writer;
-    writer.setOptions(writerOpts);
-    writer.setInput(reader);
+    writer.setOptions(writerOps);
+    writer.setInput(bufferReader);
+
     writer.prepare(table);
     writer.execute(table);
 
-    diffdump(infile, outfile);
+    Options readerOps;
+    readerOps.add("filename", FILENAME);
+
+    PointTable readTable;
+
+    LasReader reader;
+    reader.setOptions(readerOps);
+
+    reader.prepare(readTable);
+    PointViewSet viewSet = reader.execute(readTable);
+    EXPECT_EQ(viewSet.size(), 1u);
+    view = *viewSet.begin();
+    EXPECT_EQ(view->size(), 1u);
+    EXPECT_EQ(ClassLabel::Ground | ClassLabel::Synthetic, view->getFieldAs<uint8_t>(Id::Classification, 0));
+
+    FileUtils::deleteFile(FILENAME);
 }
-**/
+
 

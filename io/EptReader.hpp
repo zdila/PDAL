@@ -34,108 +34,81 @@
 
 #pragma once
 
-#include <array>
-#include <cstddef>
-#include <cstdint>
+#include <map>
+#include <string>
 #include <memory>
-#include <mutex>
-#include <set>
+#include <unordered_set>
 
+#include <pdal/JsonFwd.hpp>
 #include <pdal/Reader.hpp>
 #include <pdal/Streamable.hpp>
 #include <pdal/util/Bounds.hpp>
 
-namespace Json
-{
-    class Value;
-}
-
 namespace pdal
 {
 
-namespace arbiter
-{
-    class Arbiter;
-    class Endpoint;
-}
-
+class Connector;
 class EptInfo;
-class FixedPointLayout;
 class Key;
-class Pool;
+class TileContents;
+struct Overlap;
+using Hierarchy = std::unordered_set<Overlap>;
+using StringMap = std::map<std::string, std::string>;
 
-class PDAL_DLL EptReader : public Reader
+class PDAL_DLL EptReader : public Reader, public Streamable
 {
+    FRIEND_TEST(EptReaderTest, getRemoteType);
+    FRIEND_TEST(EptReaderTest, getCoercedType);
+
 public:
     EptReader();
     virtual ~EptReader();
     std::string getName() const override;
 
+private:
     virtual void addArgs(ProgramArgs& args) override;
     virtual void initialize() override;
     virtual QuickInfo inspect() override;
     virtual void addDimensions(PointLayoutPtr layout) override;
     virtual void ready(PointTableRef table) override;
-    virtual PointViewSet run(PointViewPtr view) override;
+    virtual point_count_t read(PointViewPtr view, point_count_t count) override;
+    virtual bool processOne(PointRef& point) override;
 
-private:
     // If argument "origin" is specified, this function will clip the query
     // bounds to the bounds of the specified origin and set m_queryOriginId to
     // the selected OriginId value.  If the selected origin is not found, throw.
     void handleOriginQuery();
+    void setForwards(StringMap& headers, StringMap& query);
 
     // Aggregate all EPT keys overlapping our query bounds and their number of
     // points from a walk through the hierarchy.  Each of these keys will be
     // downloaded during the 'read' section.
     void overlaps();
-    void overlaps(const Json::Value& heirarchy, const Key& key);
+    void overlaps(Hierarchy& target, const NL::json& current, const Key& key);
+    bool hasSpatialFilter() const;
+    bool passesSpatialFilter(const BOX3D& tileBounds) const;
+    void process(PointViewPtr dstView, const TileContents& tile, point_count_t count);
+    bool processPoint(PointRef& dst, const TileContents& tile);
+    void load(const Overlap& overlap);
+    void checkTile(const TileContents& tile);
 
-    void readLaszip(PointView& view, const Key& key) const;
-    void readBinary(PointView& view, const Key& key) const;
-    void process(PointView& view, PointRef& pr) const;
+    struct Args;
+    std::unique_ptr<Args> m_args;
+    struct Private;
+    std::unique_ptr<Private> m_p;
 
-    Json::Value parse(const std::string& data) const;
-
-    std::string m_root;
-
-    std::unique_ptr<arbiter::Arbiter> m_arbiter;
-    std::unique_ptr<arbiter::Endpoint> m_ep;
-    std::unique_ptr<EptInfo> m_info;
-
-    class Args
-    {
-    public:
-        Bounds& boundsArg() { return m_bounds; }
-        std::string& originArg() { return m_origin; }
-        uint64_t& threadsArg() { return m_threads; }
-        double& resolutionArg() { return m_resolution; }
-
-        BOX3D bounds() const;
-        std::string origin() const { return m_origin; }
-        uint64_t threads() const { return std::max<uint64_t>(4, m_threads); }
-        double resolution() const { return m_resolution; }
-
-    private:
-        Bounds m_bounds;
-        std::string m_origin;
-        uint64_t m_threads = 0;
-        double m_resolution = 0;
-    };
-
-    Args m_args;
-    BOX3D m_queryBounds;
+    uint64_t m_tileCount;
     int64_t m_queryOriginId = -1;
-    std::unique_ptr<Pool> m_pool;
 
-    mutable std::mutex m_mutex;
-
-    std::set<Key> m_overlapKeys;
-    uint64_t m_overlapPoints = 0;
     uint64_t m_depthEnd = 0;    // Zero indicates selection of all depths.
+    uint64_t m_hierarchyStep = 0;
 
-    std::unique_ptr<FixedPointLayout> m_remoteLayout;
-    DimTypeList m_dimTypes;
-    std::array<XForm, 3> m_xyzTransforms;
+    Dimension::Id m_nodeIdDim = Dimension::Id::Unknown;
+    Dimension::Id m_pointIdDim = Dimension::Id::Unknown;
+
+    ArtifactManager *m_artifactMgr;
+    PointId m_pointId = 0;
+    uint64_t m_nodeId;
 };
 
 } // namespace pdal

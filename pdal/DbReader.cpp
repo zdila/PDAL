@@ -48,12 +48,10 @@ void DbReader::loadSchema(PointLayoutPtr layout, const XMLSchema& schema)
     m_layout = layout;
     m_dims = schema.xmlDims();
 
-    // Override XYZ to doubles and use those going forward
-    // we will apply any scaling set before handing it off
-    // to PDAL.
-    layout->registerDim(Dimension::Id::X);
-    layout->registerDim(Dimension::Id::Y);
-    layout->registerDim(Dimension::Id::Z);
+    // Always register X, Y and Z.  We will apply any scaling set
+    // before handing it off to PDAL.
+    using namespace Dimension;
+    layout->registerDims( {Id::X, Id::Y, Id::Z} );
 
     m_orientation = schema.orientation();
     m_packedPointSize = 0;
@@ -104,8 +102,7 @@ size_t DbReader::dimOffset(Dimension::Id id) const
 }
 
 
-void DbReader::writeField(PointView& view, const char *pos, const DimType& dim,
-    PointId idx)
+void DbReader::writeField(PointRef& point, const char *pos, const DimType &dim)
 {
     using namespace Dimension;
 
@@ -116,22 +113,21 @@ void DbReader::writeField(PointView& view, const char *pos, const DimType& dim,
         memcpy(&e, pos, Dimension::size(dim.m_type));
         double d = Utils::toDouble(e, dim.m_type);
         d = (d * dim.m_xform.m_scale.m_val) + dim.m_xform.m_offset.m_val;
-        view.setField(dim.m_id, idx, d);
+        point.setField(dim.m_id, d);
     }
     else
-        view.setField(dim.m_id, dim.m_type, idx, pos);
+        point.setField(dim.m_id, dim.m_type, pos);
 }
 
 
 /// Write a point's packed data into a buffer.
-/// \param[in] view PointView to write to.
-/// \param[in] idx  Index of point to write.
+/// \param[in] point PointRef to write to.
 /// \param[in] buf  Pointer to packed DB point data.
-void DbReader::writePoint(PointView& view, PointId idx, const char *buf)
+void DbReader::writePoint(PointRef& point, const char *buf)
 {
     for (auto di = m_dims.begin(); di != m_dims.end(); ++di)
     {
-        writeField(view, buf, di->m_dimType, idx);
+        writeField(point, buf, di->m_dimType);
         buf += Dimension::size(di->m_dimType.m_type);
     }
 }

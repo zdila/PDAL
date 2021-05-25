@@ -1,7 +1,7 @@
 /// Arbiter amalgamated header (https://github.com/connormanning/arbiter).
 /// It is intended to be used with #include "arbiter.hpp"
 
-// Git SHA: add0865ce56db9179f566b221527a8079f5af2dc
+// Git SHA: 18a41e535a428de1cb907b65601abd18d1d4b9b6
 
 // //////////////////////////////////////////////////////////////////////
 // Beginning of content of file: LICENSE
@@ -46,7 +46,6 @@ SOFTWARE.
 /// to prevent private header inclusion.
 #define ARBITER_IS_AMALGAMATION
 #define ARBITER_CUSTOM_NAMESPACE pdal
-#define ARBITER_EXTERNAL_JSON
 
 // //////////////////////////////////////////////////////////////////////
 // Beginning of content of file: arbiter/third/xml/rapidxml.hpp
@@ -2706,420 +2705,7 @@ namespace Xml = rapidxml;
 // End of content of file: arbiter/third/xml/xml.hpp
 // //////////////////////////////////////////////////////////////////////
 
-
-
-
-
-
-// //////////////////////////////////////////////////////////////////////
-// Beginning of content of file: arbiter/third/gzip/config.hpp
-// //////////////////////////////////////////////////////////////////////
-
-#pragma once
-
-#ifdef ARBITER_ZLIB
-
-#ifndef ZLIB_CONST
-#define ZLIB_CONST
-#endif
-
-#endif
-
-
-// //////////////////////////////////////////////////////////////////////
-// End of content of file: arbiter/third/gzip/config.hpp
-// //////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-// //////////////////////////////////////////////////////////////////////
-// Beginning of content of file: arbiter/third/gzip/utils.hpp
-// //////////////////////////////////////////////////////////////////////
-
-#pragma once
-
-#ifdef ARBITER_ZLIB
-
-#include <cstdint>
-#include <cstdlib>
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-namespace ARBITER_CUSTOM_NAMESPACE
-{
-#endif
-
-namespace arbiter
-{
-
-namespace gzip {
-
-// These live in gzip.hpp because it doesnt need to use deps.
-// Otherwise, they would need to live in impl files if these methods used
-// zlib structures or functions like inflate/deflate)
-inline bool is_compressed(const char* data, std::size_t size)
-{
-    return size > 2 &&
-           (
-               // zlib
-               (
-                   static_cast<uint8_t>(data[0]) == 0x78 &&
-                   (static_cast<uint8_t>(data[1]) == 0x9C ||
-                    static_cast<uint8_t>(data[1]) == 0x01 ||
-                    static_cast<uint8_t>(data[1]) == 0xDA ||
-                    static_cast<uint8_t>(data[1]) == 0x5E)) ||
-               // gzip
-               (static_cast<uint8_t>(data[0]) == 0x1F && static_cast<uint8_t>(data[1]) == 0x8B));
-}
-} // namespace gzip
-
-} // namespace arbiter
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-}
-#endif
-
-
-#endif
-
-
-// //////////////////////////////////////////////////////////////////////
-// End of content of file: arbiter/third/gzip/utils.hpp
-// //////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-// //////////////////////////////////////////////////////////////////////
-// Beginning of content of file: arbiter/third/gzip/version.hpp
-// //////////////////////////////////////////////////////////////////////
-
-#pragma once
-
-#ifdef ARBITER_ZLIB
-
-/// The major version number
-#define GZIP_VERSION_MAJOR 1
-
-/// The minor version number
-#define GZIP_VERSION_MINOR 0
-
-/// The patch number
-#define GZIP_VERSION_PATCH 0
-
-/// The complete version number
-#define GZIP_VERSION_CODE (GZIP_VERSION_MAJOR * 10000 + GZIP_VERSION_MINOR * 100 + GZIP_VERSION_PATCH)
-
-/// Version number as string
-#define GZIP_VERSION_STRING "1.0.0"
-
-#endif
-
-
-// //////////////////////////////////////////////////////////////////////
-// End of content of file: arbiter/third/gzip/version.hpp
-// //////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-// //////////////////////////////////////////////////////////////////////
-// Beginning of content of file: arbiter/third/gzip/compress.hpp
-// //////////////////////////////////////////////////////////////////////
-
-#pragma once
-
-#ifdef ARBITER_ZLIB
-
-#ifndef ARBITER_IS_AMALGAMATION
-#include "config.hpp"
-#endif
-
-// zlib
-#include <zlib.h>
-
-// std
-#include <limits>
-#include <stdexcept>
-#include <string>
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-namespace ARBITER_CUSTOM_NAMESPACE
-{
-#endif
-
-namespace arbiter
-{
-
-namespace gzip {
-
-class Compressor
-{
-    std::size_t max_;
-    int level_;
-
-  public:
-    Compressor(int level = Z_DEFAULT_COMPRESSION,
-               std::size_t max_bytes = 2000000000) // by default refuse operation if uncompressed data is > 2GB
-        : max_(max_bytes),
-          level_(level)
-    {
-    }
-
-    template <typename InputType>
-    void compress(InputType& output,
-                  const char* data,
-                  std::size_t size) const
-    {
-
-#ifdef DEBUG
-        // Verify if size input will fit into unsigned int, type used for zlib's avail_in
-        if (size > std::numeric_limits<unsigned int>::max())
-        {
-            throw std::runtime_error("size arg is too large to fit into unsigned int type");
-        }
-#endif
-        if (size > max_)
-        {
-            throw std::runtime_error("size may use more memory than intended when decompressing");
-        }
-
-        z_stream deflate_s;
-        deflate_s.zalloc = Z_NULL;
-        deflate_s.zfree = Z_NULL;
-        deflate_s.opaque = Z_NULL;
-        deflate_s.avail_in = 0;
-        deflate_s.next_in = Z_NULL;
-
-        // The windowBits parameter is the base two logarithm of the window size (the size of the history buffer).
-        // It should be in the range 8..15 for this version of the library.
-        // Larger values of this parameter result in better compression at the expense of memory usage.
-        // This range of values also changes the decoding type:
-        //  -8 to -15 for raw deflate
-        //  8 to 15 for zlib
-        // (8 to 15) + 16 for gzip
-        // (8 to 15) + 32 to automatically detect gzip/zlib header (decompression/inflate only)
-        constexpr int window_bits = 15 + 16; // gzip with windowbits of 15
-
-        constexpr int mem_level = 8;
-        // The memory requirements for deflate are (in bytes):
-        // (1 << (window_bits+2)) +  (1 << (mem_level+9))
-        // with a default value of 8 for mem_level and our window_bits of 15
-        // this is 128Kb
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-        if (deflateInit2(&deflate_s, level_, Z_DEFLATED, window_bits, mem_level, Z_DEFAULT_STRATEGY) != Z_OK)
-        {
-            throw std::runtime_error("deflate init failed");
-        }
-#pragma GCC diagnostic pop
-
-        deflate_s.next_in = reinterpret_cast<z_const Bytef*>(data);
-        deflate_s.avail_in = static_cast<unsigned int>(size);
-
-        std::size_t size_compressed = 0;
-        do
-        {
-            size_t increase = size / 2 + 1024;
-            if (output.size() < (size_compressed + increase))
-            {
-                output.resize(size_compressed + increase);
-            }
-            // There is no way we see that "increase" would not fit in an unsigned int,
-            // hence we use static cast here to avoid -Wshorten-64-to-32 error
-            deflate_s.avail_out = static_cast<unsigned int>(increase);
-            deflate_s.next_out = reinterpret_cast<Bytef*>((&output[0] + size_compressed));
-            // From http://www.zlib.net/zlib_how.html
-            // "deflate() has a return value that can indicate errors, yet we do not check it here.
-            // Why not? Well, it turns out that deflate() can do no wrong here."
-            // Basically only possible error is from deflateInit not working properly
-            deflate(&deflate_s, Z_FINISH);
-            size_compressed += (increase - deflate_s.avail_out);
-        } while (deflate_s.avail_out == 0);
-
-        deflateEnd(&deflate_s);
-        output.resize(size_compressed);
-    }
-};
-
-inline std::string compress(const char* data,
-                            std::size_t size,
-                            int level = Z_DEFAULT_COMPRESSION)
-{
-    Compressor comp(level);
-    std::string output;
-    comp.compress(output, data, size);
-    return output;
-}
-
-} // namespace gzip
-
-} // namespace arbiter
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-}
-#endif
-
-#endif // ARBITER_ZLIB
-
-
-// //////////////////////////////////////////////////////////////////////
-// End of content of file: arbiter/third/gzip/compress.hpp
-// //////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-// //////////////////////////////////////////////////////////////////////
-// Beginning of content of file: arbiter/third/gzip/decompress.hpp
-// //////////////////////////////////////////////////////////////////////
-
-#pragma once
-
-#ifdef ARBITER_ZLIB
-
-#ifndef ARBITER_IS_AMALGAMATION
-#include "config.hpp"
-#endif
-
-// zlib
-#include <zlib.h>
-
-// std
-#include <cstdint>
-#include <limits>
-#include <stdexcept>
-#include <string>
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-namespace ARBITER_CUSTOM_NAMESPACE
-{
-#endif
-
-namespace arbiter
-{
-
-namespace gzip {
-
-class Decompressor
-{
-    std::size_t max_;
-
-  public:
-    Decompressor(std::size_t max_bytes = 1000000000) // by default refuse operation if compressed data is > 1GB
-        : max_(max_bytes)
-    {
-    }
-
-    template <typename OutputType>
-    void decompress(OutputType& output,
-                    const char* data,
-                    std::size_t size) const
-    {
-        z_stream inflate_s;
-
-        inflate_s.zalloc = Z_NULL;
-        inflate_s.zfree = Z_NULL;
-        inflate_s.opaque = Z_NULL;
-        inflate_s.avail_in = 0;
-        inflate_s.next_in = Z_NULL;
-
-        // The windowBits parameter is the base two logarithm of the window size (the size of the history buffer).
-        // It should be in the range 8..15 for this version of the library.
-        // Larger values of this parameter result in better compression at the expense of memory usage.
-        // This range of values also changes the decoding type:
-        //  -8 to -15 for raw deflate
-        //  8 to 15 for zlib
-        // (8 to 15) + 16 for gzip
-        // (8 to 15) + 32 to automatically detect gzip/zlib header
-        constexpr int window_bits = 15 + 32; // auto with windowbits of 15
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-        if (inflateInit2(&inflate_s, window_bits) != Z_OK)
-        {
-            throw std::runtime_error("inflate init failed");
-        }
-#pragma GCC diagnostic pop
-        inflate_s.next_in = reinterpret_cast<z_const Bytef*>(data);
-
-#ifdef DEBUG
-        // Verify if size (long type) input will fit into unsigned int, type used for zlib's avail_in
-        std::uint64_t size_64 = size * 2;
-        if (size_64 > std::numeric_limits<unsigned int>::max())
-        {
-            inflateEnd(&inflate_s);
-            throw std::runtime_error("size arg is too large to fit into unsigned int type x2");
-        }
-#endif
-        if (size > max_ || (size * 2) > max_)
-        {
-            inflateEnd(&inflate_s);
-            throw std::runtime_error("size may use more memory than intended when decompressing");
-        }
-        inflate_s.avail_in = static_cast<unsigned int>(size);
-        std::size_t size_uncompressed = 0;
-        do
-        {
-            std::size_t resize_to = size_uncompressed + 2 * size;
-            if (resize_to > max_)
-            {
-                inflateEnd(&inflate_s);
-                throw std::runtime_error("size of output string will use more memory then intended when decompressing");
-            }
-            output.resize(resize_to);
-            inflate_s.avail_out = static_cast<unsigned int>(2 * size);
-            inflate_s.next_out = reinterpret_cast<Bytef*>(&output[0] + size_uncompressed);
-            int ret = inflate(&inflate_s, Z_FINISH);
-            if (ret != Z_STREAM_END && ret != Z_OK && ret != Z_BUF_ERROR)
-            {
-                std::string error_msg = inflate_s.msg;
-                inflateEnd(&inflate_s);
-                throw std::runtime_error(error_msg);
-            }
-
-            size_uncompressed += (2 * size - inflate_s.avail_out);
-        } while (inflate_s.avail_out == 0);
-        inflateEnd(&inflate_s);
-        output.resize(size_uncompressed);
-    }
-};
-
-inline std::string decompress(const char* data, std::size_t size)
-{
-    Decompressor decomp;
-    std::string output;
-    decomp.decompress(output, data, size);
-    return output;
-}
-
-} // namespace gzip
-
-} // namespace arbiter
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-}
-#endif
-
-#endif // ARBITER_ZLIB
-
-
-// //////////////////////////////////////////////////////////////////////
-// End of content of file: arbiter/third/gzip/decompress.hpp
-// //////////////////////////////////////////////////////////////////////
-
-
-
-
+#include <nlohmann/json.hpp>
 
 
 // //////////////////////////////////////////////////////////////////////
@@ -3183,6 +2769,8 @@ namespace ARBITER_CUSTOM_NAMESPACE
 namespace arbiter
 {
 
+using StringMap = std::map<std::string, std::string>;
+
 /** @brief Exception class for all internally thrown runtime errors. */
 class ArbiterError : public std::runtime_error
 {
@@ -3194,10 +2782,10 @@ namespace http
 {
 
 /** HTTP header fields. */
-using Headers = std::map<std::string, std::string>;
+using Headers = StringMap;
 
 /** HTTP query parameters. */
-using Query = std::map<std::string, std::string>;
+using Query = StringMap;
 
 /** @cond arbiter_internal */
 
@@ -3263,6 +2851,80 @@ private:
 
 
 // //////////////////////////////////////////////////////////////////////
+// Beginning of content of file: arbiter/util/json.hpp
+// //////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+#ifndef ARBITER_IS_AMALGAMATION
+#include <arbiter/third/json/json.hpp>
+#endif
+
+#ifdef ARBITER_CUSTOM_NAMESPACE
+namespace ARBITER_CUSTOM_NAMESPACE
+{
+#endif
+
+namespace arbiter
+{
+
+using json = nlohmann::json;
+
+// Work around:
+// https://github.com/nlohmann/json/issues/709
+// https://github.com/google/googletest/pull/1186
+inline void PrintTo(const json& j, std::ostream* os) { *os << j.dump(); }
+
+// Merge B into A, without overwriting any keys from A.
+inline json merge(const json& a, const json& b)
+{
+    json out(a);
+    if (out.is_null()) out = json::object();
+
+    if (!b.is_null())
+    {
+        if (b.is_object())
+        {
+            for (const auto& p : b.items())
+            {
+                // If A doesn't have this key, then set it to B's value.
+                // If A has the key but it's an object, then recursively
+                // merge.
+                // Otherwise A already has a value here that we won't
+                // overwrite.
+                const std::string& key(p.key());
+                const json& val(p.value());
+
+                if (!out.count(key)) out[key] = val;
+                else if (out[key].is_object()) merge(out[key], val);
+            }
+        }
+        else
+        {
+            out = b;
+        }
+    }
+
+    return out;
+}
+
+} // namespace arbiter
+
+#ifdef ARBITER_CUSTOM_NAMESPACE
+}
+#endif
+
+
+// //////////////////////////////////////////////////////////////////////
+// End of content of file: arbiter/util/json.hpp
+// //////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+// //////////////////////////////////////////////////////////////////////
 // Beginning of content of file: arbiter/util/curl.hpp
 // //////////////////////////////////////////////////////////////////////
 
@@ -3274,21 +2936,8 @@ private:
 #include <vector>
 
 #ifndef ARBITER_IS_AMALGAMATION
-
-#include <arbiter/util/types.hpp>
 #include <arbiter/util/exports.hpp>
-
-
-#ifndef ARBITER_EXTERNAL_JSON
-#include <arbiter/third/json/json.hpp>
-#endif
-
-#endif
-
-
-
-#ifdef ARBITER_EXTERNAL_JSON
-#include <json/json.h>
+#include <arbiter/util/types.hpp>
 #endif
 
 #ifdef ARBITER_CURL
@@ -3343,7 +2992,7 @@ public:
             Query query);
 
 private:
-    Curl(const Json::Value& json = Json::Value());
+    Curl(std::string j);
 
     void init(std::string path, const Headers& headers, const Query& query);
 
@@ -3362,6 +3011,7 @@ private:
     bool m_verifyPeer = true;
     std::unique_ptr<std::string> m_caPath;
     std::unique_ptr<std::string> m_caInfo;
+    std::unique_ptr<std::string> m_proxy;
 
     std::vector<char> m_data;
 };
@@ -3401,21 +3051,9 @@ private:
 #include <vector>
 
 #ifndef ARBITER_IS_AMALGAMATION
-
 #include <arbiter/util/curl.hpp>
-#include <arbiter/util/types.hpp>
 #include <arbiter/util/exports.hpp>
-
-#ifndef ARBITER_EXTERNAL_JSON
-#include <arbiter/third/json/json.hpp>
-#endif
-
-#endif
-
-
-
-#ifdef ARBITER_EXTERNAL_JSON
-#include <json/json.h>
+#include <arbiter/util/types.hpp>
 #endif
 
 #ifdef ARBITER_CUSTOM_NAMESPACE
@@ -3487,10 +3125,8 @@ class ARBITER_DLL Pool
     friend class Resource;
 
 public:
-    Pool(
-            std::size_t concurrent = 4,
-            std::size_t retry = 4,
-            Json::Value json = Json::Value());
+    Pool() : Pool(4, 4, "") { }
+    Pool(std::size_t concurrent, std::size_t retry, std::string j);
     ~Pool();
 
     Resource acquire();
@@ -3598,6 +3234,7 @@ class ARBITER_DLL Time
 {
 public:
     static const std::string iso8601;
+    static const std::string rfc822;
     static const std::string iso8601NoSeparators;
     static const std::string dateNoSeparators;
 
@@ -3631,6 +3268,431 @@ private:
 
 
 // //////////////////////////////////////////////////////////////////////
+// Beginning of content of file: arbiter/util/macros.hpp
+// //////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+#define ROTLEFT(a,b) (((a) << (b)) | ((a) >> (32-(b))))
+#define ROTRIGHT(a,b) (((a) >> (b)) | ((a) << (32-(b))))
+
+// SHA256.
+#define CH(x,y,z) (((x) & (y)) ^ (~(x) & (z)))
+#define MAJ(x,y,z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
+#define EP0(x) (ROTRIGHT(x,2) ^ ROTRIGHT(x,13) ^ ROTRIGHT(x,22))
+#define EP1(x) (ROTRIGHT(x,6) ^ ROTRIGHT(x,11) ^ ROTRIGHT(x,25))
+#define SIG0(x) (ROTRIGHT(x,7) ^ ROTRIGHT(x,18) ^ ((x) >> 3))
+#define SIG1(x) (ROTRIGHT(x,17) ^ ROTRIGHT(x,19) ^ ((x) >> 10))
+
+// MD5.
+#define F(x,y,z) ((x & y) | (~x & z))
+#define G(x,y,z) ((x & z) | (y & ~z))
+#define H(x,y,z) (x ^ y ^ z)
+#define I(x,y,z) (y ^ (x | ~z))
+
+#define FF(a,b,c,d,m,s,t) { a += F(b,c,d) + m + t; \
+                            a = b + ROTLEFT(a,s); }
+#define GG(a,b,c,d,m,s,t) { a += G(b,c,d) + m + t; \
+                            a = b + ROTLEFT(a,s); }
+#define HH(a,b,c,d,m,s,t) { a += H(b,c,d) + m + t; \
+                            a = b + ROTLEFT(a,s); }
+#define II(a,b,c,d,m,s,t) { a += I(b,c,d) + m + t; \
+                            a = b + ROTLEFT(a,s); }
+
+
+// //////////////////////////////////////////////////////////////////////
+// End of content of file: arbiter/util/macros.hpp
+// //////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+// //////////////////////////////////////////////////////////////////////
+// Beginning of content of file: arbiter/util/md5.hpp
+// //////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+#include <cstddef>
+#include <string>
+#include <vector>
+
+#ifndef ARBITER_IS_AMALGAMATION
+#include <arbiter/util/exports.hpp>
+#endif
+
+// MD5 implementation adapted from:
+//      https://github.com/B-Con/crypto-algorithms
+
+#ifdef ARBITER_CUSTOM_NAMESPACE
+namespace ARBITER_CUSTOM_NAMESPACE
+{
+#endif
+
+namespace arbiter
+{
+namespace crypto
+{
+
+ARBITER_DLL std::string md5(const std::string& data);
+
+} // namespace crypto
+} // namespace arbiter
+
+#ifdef ARBITER_CUSTOM_NAMESPACE
+}
+#endif
+
+
+// //////////////////////////////////////////////////////////////////////
+// End of content of file: arbiter/util/md5.hpp
+// //////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+// //////////////////////////////////////////////////////////////////////
+// Beginning of content of file: arbiter/util/sha256.hpp
+// //////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+#include <cstddef>
+#include <string>
+#include <vector>
+
+#ifndef ARBITER_IS_AMALGAMATION
+#include <arbiter/util/exports.hpp>
+#endif
+
+
+// SHA256 implementation adapted from:
+//      https://github.com/B-Con/crypto-algorithms
+// HMAC:
+//      https://en.wikipedia.org/wiki/Hash-based_message_authentication_code
+
+#ifdef ARBITER_CUSTOM_NAMESPACE
+namespace ARBITER_CUSTOM_NAMESPACE
+{
+#endif
+
+namespace arbiter
+{
+namespace crypto
+{
+
+ARBITER_DLL std::vector<char> sha256(const std::vector<char>& data);
+ARBITER_DLL std::string sha256(const std::string& data);
+
+ARBITER_DLL std::string hmacSha256(
+        const std::string& key,
+        const std::string& data);
+
+} // namespace crypto
+} // namespace arbiter
+
+#ifdef ARBITER_CUSTOM_NAMESPACE
+}
+#endif
+
+
+// //////////////////////////////////////////////////////////////////////
+// End of content of file: arbiter/util/sha256.hpp
+// //////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+// //////////////////////////////////////////////////////////////////////
+// Beginning of content of file: arbiter/util/transforms.hpp
+// //////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+#include <string>
+#include <vector>
+
+#ifndef ARBITER_IS_AMALGAMATION
+#include <arbiter/util/exports.hpp>
+#endif
+
+
+#ifdef ARBITER_CUSTOM_NAMESPACE
+namespace ARBITER_CUSTOM_NAMESPACE
+{
+#endif
+
+namespace arbiter
+{
+namespace crypto
+{
+
+ARBITER_DLL std::string encodeBase64(
+        const std::vector<char>& data,
+        bool pad = true);
+ARBITER_DLL std::string encodeBase64(const std::string& data, bool pad = true);
+
+ARBITER_DLL std::string decodeBase64(const std::string& data);
+
+ARBITER_DLL std::string encodeAsHex(const std::vector<char>& data);
+ARBITER_DLL std::string encodeAsHex(const std::string& data);
+
+} // namespace crypto
+} // namespace arbiter
+
+#ifdef ARBITER_CUSTOM_NAMESPACE
+}
+#endif
+
+
+// //////////////////////////////////////////////////////////////////////
+// End of content of file: arbiter/util/transforms.hpp
+// //////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+// //////////////////////////////////////////////////////////////////////
+// Beginning of content of file: arbiter/util/util.hpp
+// //////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+#include <algorithm>
+
+#ifndef ARBITER_IS_AMALGAMATION
+#include <arbiter/util/exports.hpp>
+#endif
+
+#ifdef ARBITER_CUSTOM_NAMESPACE
+namespace ARBITER_CUSTOM_NAMESPACE
+{
+#endif
+
+namespace arbiter
+{
+
+/** General utilities. */
+
+/** Returns @p path, less any trailing glob indicators (one or two
+ * asterisks) as well as any possible trailing slash.
+ */
+ARBITER_DLL std::string stripPostfixing(std::string path);
+
+/** Returns the portion of @p fullPath following the last instance of the
+ * character `/`, if any instances exist aside from possibly the delimiter
+ * `://`.  If there are no other instances of `/`, then @p fullPath itself
+ * will be returned.
+ *
+ * If @p fullPath ends with a trailing `/` or a glob indication (i.e. is a
+ * directory), these trailing characters will be stripped prior to the
+ * logic above, thus the innermost directory in the full path will be
+ * returned.
+ */
+ARBITER_DLL std::string getBasename(std::string fullPath);
+
+/** Returns everything besides the basename, as determined by `getBasename`.
+ * For file paths, this corresponds to the directory path above the file.
+ * For directory paths, this corresponds to all directories above the
+ * innermost directory.
+ */
+ARBITER_DLL std::string getDirname(std::string fullPath);
+
+/** @cond arbiter_internal */
+ARBITER_DLL inline bool isSlash(char c) { return c == '/' || c == '\\'; }
+
+/** Returns true if the last character is an asterisk. */
+ARBITER_DLL inline bool isGlob(std::string path)
+{
+    return path.size() && path.back() == '*';
+}
+
+/** Returns true if the last character is a slash or an asterisk. */
+inline bool isDirectory(std::string path)
+{
+    return (path.size() && isSlash(path.back())) || isGlob(path);
+}
+
+inline std::string joinImpl(bool first = false) { return std::string(); }
+
+template <typename ...Paths>
+inline std::string joinImpl(
+        bool first,
+        std::string current,
+        Paths&&... paths)
+{
+    const bool currentIsDir(current.size() && isSlash(current.back()));
+    std::string next(joinImpl(false, std::forward<Paths>(paths)...));
+
+    // Strip slashes from the front of our remainder.
+    while (next.size() && isSlash(next.front())) next = next.substr(1);
+
+    if (first)
+    {
+        // If this is the first component, strip a single trailing slash if
+        // one exists - but do not strip a double trailing slash since we
+        // want to retain Windows paths like "C://".
+        if (
+                current.size() > 1 &&
+                isSlash(current.back()) &&
+                !isSlash(current.at(current.size() - 2)))
+        {
+            current.pop_back();
+        }
+    }
+    else
+    {
+        while (current.size() && isSlash(current.back()))
+        {
+            current.pop_back();
+        }
+        if (current.empty()) return next;
+    }
+
+    std::string sep;
+
+    if (next.size() && (current.empty() || !isSlash(current.back())))
+    {
+        // We are going to join current with a populated subpath, so make
+        // sure they are separated by a slash.
+#ifdef ARBITER_WINDOWS
+        sep = "\\";
+#else
+        sep = "/";
+#endif
+    }
+    else if (next.empty() && currentIsDir)
+    {
+        // We are at the end of the chain, and the last component was a
+        // directory.  Retain its trailing slash.
+        if (current.size() && !isSlash(current.back()))
+        {
+#ifdef ARBITER_WINDOWS
+            sep = "\\";
+#else
+            sep = "/";
+#endif
+
+        }
+    }
+
+    return current + sep + next;
+}
+/** @endcond */
+
+/** @brief Join one or more path components "intelligently".
+ *
+ * The result is the concatenation of @p path and any members of @p paths
+ * with exactly one slash preceding each non-empty portion of @p path or
+ * @p paths.  Portions of @p paths will be stripped of leading slashes prior
+ * to processing, so portions containing only slashes are considered empty.
+ *
+ * If @p path contains a single trailing slash preceded by a non-slash
+ * character, then that slash will be stripped prior to processing.
+ *
+ * @code
+ * join("")                                 // ""
+ * join("/")                                // "/"
+ * join("/var", "log", "arbiter.log")       // "/var/log/arbiter.log"
+ * join("/var/", "log", "arbiter.log")      // "/var/log/arbiter.log"
+ * join("", "var", "log", "arbiter.log")    // "/var/log/arbiter.log"
+ * join("/", "/var", "log", "arbiter.log")  // "/var/log/arbiter.log"
+ * join("", "/var", "log", "arbiter.log")   // "/var/log/arbiter.log"
+ * join("~", "code", "", "test.cpp", "/")   // "~/code/test.cpp"
+ * join("C:\\", "My Documents")             // "C:/My Documents"
+ * join("s3://", "bucket", "object.txt")    // "s3://bucket/object.txt"
+ * @endcode
+ */
+template <typename ...Paths>
+inline std::string join(std::string path, Paths&&... paths)
+{
+    return joinImpl(true, path, std::forward<Paths>(paths)...);
+}
+
+/** @brief Extract an environment variable, if it exists, independent of
+ * platform.
+ */
+ARBITER_DLL std::unique_ptr<std::string> env(const std::string& var);
+
+/** @brief Split a string on a token. */
+ARBITER_DLL std::vector<std::string> split(
+        const std::string& s,
+        char delimiter = '\n');
+
+/** @brief Remove whitespace. */
+ARBITER_DLL std::string stripWhitespace(const std::string& s);
+
+namespace internal
+{
+
+template<typename T, typename... Args>
+std::unique_ptr<T> makeUnique(Args&&... args)
+{
+    return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+}
+
+template<typename T>
+std::unique_ptr<T> clone(const T& t)
+{
+    return makeUnique<T>(t);
+}
+
+template<typename T>
+std::unique_ptr<T> maybeClone(const T* t)
+{
+    if (t) return makeUnique<T>(*t);
+    else return std::unique_ptr<T>();
+}
+
+} // namespace internal
+
+ARBITER_DLL uint64_t randomNumber();
+
+/** If no delimiter of "://" is found, returns "file".  Otherwise, returns
+ * the substring prior to but not including this delimiter.
+ */
+ARBITER_DLL std::string getProtocol(std::string path);
+
+/** Strip the type and delimiter `://`, if they exist. */
+ARBITER_DLL std::string stripProtocol(std::string path);
+
+/** Get the characters following the final instance of '.', or an empty
+ * string if there are no '.' characters. */
+ARBITER_DLL std::string getExtension(std::string path);
+
+/** Strip the characters following (and including) the final instance of
+ * '.' if one exists, otherwise return the full path. */
+ARBITER_DLL std::string stripExtension(std::string path);
+
+} // namespace arbiter
+
+#ifdef ARBITER_CUSTOM_NAMESPACE
+}
+#endif
+
+
+// //////////////////////////////////////////////////////////////////////
+// End of content of file: arbiter/util/util.hpp
+// //////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+// //////////////////////////////////////////////////////////////////////
 // Beginning of content of file: arbiter/driver.hpp
 // //////////////////////////////////////////////////////////////////////
 
@@ -3643,9 +3705,7 @@ private:
 #include <vector>
 
 #ifndef ARBITER_IS_AMALGAMATION
-
 #include <arbiter/util/exports.hpp>
-
 #endif
 
 #ifdef ARBITER_CUSTOM_NAMESPACE
@@ -3788,20 +3848,10 @@ typedef std::map<std::string, std::unique_ptr<Driver>> DriverMap;
 
 #ifndef ARBITER_IS_AMALGAMATION
 #include <arbiter/driver.hpp>
-
-#ifndef ARBITER_EXTERNAL_JSON
-#include <arbiter/third/json/json.hpp>
 #endif
-
-#endif
-
 
 #ifndef ARBITER_IS_AMALGAMATION
 #include <arbiter/util/exports.hpp>
-#endif
-
-#ifdef ARBITER_EXTERNAL_JSON
-#include <json/json.h>
 #endif
 
 #ifdef ARBITER_CUSTOM_NAMESPACE
@@ -3821,71 +3871,66 @@ class Endpoint;
  */
 
 /** Filesystem utilities. */
-namespace fs
+
+/** @brief Returns true if created, false if already existed. */
+ARBITER_DLL bool mkdirp(std::string dir);
+
+/** @brief Returns true if removed, otherwise false. */
+ARBITER_DLL bool remove(std::string filename);
+
+/** @brief Performs tilde expansion to a fully-qualified path, if possible.
+ */
+ARBITER_DLL std::string expandTilde(std::string path);
+
+/** @brief Get temporary path from environment. */
+ARBITER_DLL std::string getTempPath();
+
+/** @brief Resolve a possible wildcard path. */
+ARBITER_DLL std::vector<std::string> glob(std::string path);
+
+/** @brief A scoped local filehandle for a possibly remote path.
+ *
+ * This is an RAII style pseudo-filehandle.  It manages the scope of a
+ * local temporary version of a file, where that file may have been copied
+ * from a remote storage location.
+ *
+ * See Arbiter::getLocalHandle for details about construction.
+ */
+class ARBITER_DLL LocalHandle
 {
-    /** @brief Returns true if created, false if already existed. */
-    ARBITER_DLL bool mkdirp(std::string dir);
+public:
+    LocalHandle(std::string localPath, bool isRemote);
 
-    /** @brief Returns true if removed, otherwise false. */
-    ARBITER_DLL bool remove(std::string filename);
-
-    /** @brief Performs tilde expansion to a fully-qualified path, if possible.
-     */
-    ARBITER_DLL std::string expandTilde(std::string path);
-
-    /** @brief Get temporary path from environment. */
-    ARBITER_DLL std::string getTempPath();
-
-    /** @brief Resolve a possible wildcard path. */
-    ARBITER_DLL std::vector<std::string> glob(std::string path);
-
-    /** @brief A scoped local filehandle for a possibly remote path.
+    /** @brief Deletes the local path if the data was copied from a remote
+     * source.
      *
-     * This is an RAII style pseudo-filehandle.  It manages the scope of a
-     * local temporary version of a file, where that file may have been copied
-     * from a remote storage location.
-     *
-     * See Arbiter::getLocalHandle for details about construction.
+     * This is a no-op if the path was already local and not copied.
      */
-    class ARBITER_DLL LocalHandle
+    ~LocalHandle();
+
+    /** @brief Get the path of the locally stored file.
+     *
+     * @return A local filesystem absolute path containing the data
+     * requested in Arbiter::getLocalHandle.
+     */
+    std::string localPath() const { return m_localPath; }
+
+    /** @brief Release the managed local path and return the path from
+     * LocalHandle::localPath.
+     *
+     * After this call, destruction of the LocalHandle will not erase the
+     * temporary file that may have been created.
+     */
+    std::string release()
     {
-        friend class arbiter::Arbiter;
-        friend class arbiter::Endpoint;
+        m_erase = false;
+        return localPath();
+    }
 
-    public:
-        /** @brief Deletes the local path if the data was copied from a remote
-         * source.
-         *
-         * This is a no-op if the path was already local and not copied.
-         */
-        ~LocalHandle();
-
-        /** @brief Get the path of the locally stored file.
-         *
-         * @return A local filesystem absolute path containing the data
-         * requested in Arbiter::getLocalHandle.
-         */
-        std::string localPath() const { return m_localPath; }
-
-        /** @brief Release the managed local path and return the path from
-         * LocalHandle::localPath.
-         *
-         * After this call, destruction of the LocalHandle will not erase the
-         * temporary file that may have been created.
-         */
-        std::string release()
-        {
-            m_erase = false;
-            return localPath();
-        }
-
-    private:
-        LocalHandle(std::string localPath, bool isRemote);
-
-        const std::string m_localPath;
-        bool m_erase;
-    };
-}
+private:
+    const std::string m_localPath;
+    bool m_erase;
+};
 /** @} */
 
 namespace drivers
@@ -3899,7 +3944,7 @@ public:
 
     using Driver::get;
 
-    static std::unique_ptr<Fs> create(const Json::Value& json);
+    static std::unique_ptr<Fs> create();
 
     virtual std::string type() const override { return "file"; }
 
@@ -3950,8 +3995,8 @@ protected:
 #include <memory>
 
 #ifndef ARBITER_IS_AMALGAMATION
-#include <arbiter/util/http.hpp>
 #include <arbiter/driver.hpp>
+#include <arbiter/util/http.hpp>
 #endif
 
 #ifdef ARBITER_CUSTOM_NAMESPACE
@@ -3976,9 +4021,7 @@ class ARBITER_DLL Http : public Driver
 {
 public:
     Http(http::Pool& pool);
-    static std::unique_ptr<Http> create(
-            http::Pool& pool,
-            const Json::Value& json);
+    static std::unique_ptr<Http> create(http::Pool& pool);
 
     // Inherited from Driver.
     virtual std::string type() const override { return "http"; }
@@ -4014,6 +4057,18 @@ public:
     std::unique_ptr<std::string> tryGet(
             std::string path,
             http::Headers headers = http::Headers(),
+            http::Query query = http::Query()) const;
+
+    /* Perform an HTTP HEAD request. */
+    std::size_t getSize(
+            std::string path,
+            http::Headers headers,
+            http::Query query = http::Query()) const;
+
+    /* Perform an HTTP HEAD request. */
+    std::unique_ptr<std::size_t> tryGetSize(
+            std::string path,
+            http::Headers headers,
             http::Query query = http::Query()) const;
 
     /** Perform an HTTP GET request. */
@@ -4114,9 +4169,7 @@ class Https : public Http
 public:
     Https(http::Pool& pool) : Http(pool) { }
 
-    static std::unique_ptr<Https> create(
-            http::Pool& pool,
-            const Json::Value& json)
+    static std::unique_ptr<Https> create(http::Pool& pool)
     {
         return std::unique_ptr<Https>(new Https(pool));
     }
@@ -4134,446 +4187,6 @@ public:
 
 // //////////////////////////////////////////////////////////////////////
 // End of content of file: arbiter/drivers/http.hpp
-// //////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-// //////////////////////////////////////////////////////////////////////
-// Beginning of content of file: arbiter/util/macros.hpp
-// //////////////////////////////////////////////////////////////////////
-
-#pragma once
-
-#define ROTLEFT(a,b) (((a) << (b)) | ((a) >> (32-(b))))
-#define ROTRIGHT(a,b) (((a) >> (b)) | ((a) << (32-(b))))
-
-// SHA256.
-#define CH(x,y,z) (((x) & (y)) ^ (~(x) & (z)))
-#define MAJ(x,y,z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
-#define EP0(x) (ROTRIGHT(x,2) ^ ROTRIGHT(x,13) ^ ROTRIGHT(x,22))
-#define EP1(x) (ROTRIGHT(x,6) ^ ROTRIGHT(x,11) ^ ROTRIGHT(x,25))
-#define SIG0(x) (ROTRIGHT(x,7) ^ ROTRIGHT(x,18) ^ ((x) >> 3))
-#define SIG1(x) (ROTRIGHT(x,17) ^ ROTRIGHT(x,19) ^ ((x) >> 10))
-
-// MD5.
-#define F(x,y,z) ((x & y) | (~x & z))
-#define G(x,y,z) ((x & z) | (y & ~z))
-#define H(x,y,z) (x ^ y ^ z)
-#define I(x,y,z) (y ^ (x | ~z))
-
-#define FF(a,b,c,d,m,s,t) { a += F(b,c,d) + m + t; \
-                            a = b + ROTLEFT(a,s); }
-#define GG(a,b,c,d,m,s,t) { a += G(b,c,d) + m + t; \
-                            a = b + ROTLEFT(a,s); }
-#define HH(a,b,c,d,m,s,t) { a += H(b,c,d) + m + t; \
-                            a = b + ROTLEFT(a,s); }
-#define II(a,b,c,d,m,s,t) { a += I(b,c,d) + m + t; \
-                            a = b + ROTLEFT(a,s); }
-
-
-// //////////////////////////////////////////////////////////////////////
-// End of content of file: arbiter/util/macros.hpp
-// //////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-// //////////////////////////////////////////////////////////////////////
-// Beginning of content of file: arbiter/util/md5.hpp
-// //////////////////////////////////////////////////////////////////////
-
-#pragma once
-
-#include <cstddef>
-#include <string>
-#include <vector>
-
-#ifndef ARBITER_IS_AMALGAMATION
-#include <arbiter/util/exports.hpp>
-
-#ifndef ARBITER_EXTERNAL_JSON
-#include <arbiter/third/json/json.hpp>
-#endif
-
-#endif
-
-
-// MD5 implementation adapted from:
-//      https://github.com/B-Con/crypto-algorithms
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-namespace ARBITER_CUSTOM_NAMESPACE
-{
-#endif
-
-namespace arbiter
-{
-namespace crypto
-{
-
-ARBITER_DLL std::string md5(const std::string& data);
-
-} // namespace crypto
-} // namespace arbiter
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-}
-#endif
-
-
-// //////////////////////////////////////////////////////////////////////
-// End of content of file: arbiter/util/md5.hpp
-// //////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-// //////////////////////////////////////////////////////////////////////
-// Beginning of content of file: arbiter/util/sha256.hpp
-// //////////////////////////////////////////////////////////////////////
-
-#pragma once
-
-#include <cstddef>
-#include <string>
-#include <vector>
-
-#ifndef ARBITER_IS_AMALGAMATION
-#include <arbiter/util/exports.hpp>
-
-#ifndef ARBITER_EXTERNAL_JSON
-#include <arbiter/third/json/json.hpp>
-#endif
-
-#endif
-
-
-// SHA256 implementation adapted from:
-//      https://github.com/B-Con/crypto-algorithms
-// HMAC:
-//      https://en.wikipedia.org/wiki/Hash-based_message_authentication_code
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-namespace ARBITER_CUSTOM_NAMESPACE
-{
-#endif
-
-namespace arbiter
-{
-namespace crypto
-{
-
-ARBITER_DLL std::vector<char> sha256(const std::vector<char>& data);
-ARBITER_DLL std::string sha256(const std::string& data);
-
-ARBITER_DLL std::string hmacSha256(
-        const std::string& key,
-        const std::string& data);
-
-} // namespace crypto
-} // namespace arbiter
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-}
-#endif
-
-
-// //////////////////////////////////////////////////////////////////////
-// End of content of file: arbiter/util/sha256.hpp
-// //////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-// //////////////////////////////////////////////////////////////////////
-// Beginning of content of file: arbiter/util/transforms.hpp
-// //////////////////////////////////////////////////////////////////////
-
-#pragma once
-
-#include <string>
-#include <vector>
-
-#ifndef ARBITER_IS_AMALGAMATION
-#include <arbiter/util/exports.hpp>
-
-#ifndef ARBITER_EXTERNAL_JSON
-#include <arbiter/third/json/json.hpp>
-#endif
-
-#endif
-
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-namespace ARBITER_CUSTOM_NAMESPACE
-{
-#endif
-
-namespace arbiter
-{
-namespace crypto
-{
-
-ARBITER_DLL std::string encodeBase64(const std::vector<char>& data, bool pad = true);
-ARBITER_DLL std::string encodeBase64(const std::string& data, bool pad = true);
-
-ARBITER_DLL std::string encodeAsHex(const std::vector<char>& data);
-ARBITER_DLL std::string encodeAsHex(const std::string& data);
-
-} // namespace crypto
-} // namespace arbiter
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-}
-#endif
-
-
-// //////////////////////////////////////////////////////////////////////
-// End of content of file: arbiter/util/transforms.hpp
-// //////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-// //////////////////////////////////////////////////////////////////////
-// Beginning of content of file: arbiter/util/util.hpp
-// //////////////////////////////////////////////////////////////////////
-
-#pragma once
-
-#include <memory>
-#include <string>
-#include <utility>
-#include <vector>
-#include <algorithm>
-
-#ifndef ARBITER_IS_AMALGAMATION
-#include <arbiter/util/exports.hpp>
-
-#ifndef ARBITER_EXTERNAL_JSON
-#include <arbiter/third/json/json.hpp>
-#endif
-
-#endif
-
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-namespace ARBITER_CUSTOM_NAMESPACE
-{
-#endif
-
-namespace arbiter
-{
-
-/** General utilities. */
-namespace util
-{
-    /** Returns @p path, less any trailing glob indicators (one or two
-     * asterisks) as well as any possible trailing slash.
-     */
-    ARBITER_DLL std::string stripPostfixing(std::string path);
-
-    /** Returns the portion of @p fullPath following the last instance of the
-     * character `/`, if any instances exist aside from possibly the delimiter
-     * `://`.  If there are no other instances of `/`, then @p fullPath itself
-     * will be returned.
-     *
-     * If @p fullPath ends with a trailing `/` or a glob indication (i.e. is a
-     * directory), these trailing characters will be stripped prior to the
-     * logic above, thus the innermost directory in the full path will be
-     * returned.
-     */
-    ARBITER_DLL std::string getBasename(std::string fullPath);
-
-    /** Returns everything besides the basename, as determined by `getBasename`.
-     * For file paths, this corresponds to the directory path above the file.
-     * For directory paths, this corresponds to all directories above the
-     * innermost directory.
-     */
-    ARBITER_DLL std::string getNonBasename(std::string fullPath);
-
-    /** @cond arbiter_internal */
-    ARBITER_DLL inline bool isSlash(char c) { return c == '/' || c == '\\'; }
-
-    /** Returns true if the last character is an asterisk. */
-    ARBITER_DLL inline bool isGlob(std::string path)
-    {
-        return path.size() && path.back() == '*';
-    }
-
-    /** Returns true if the last character is a slash or an asterisk. */
-    inline bool isDirectory(std::string path)
-    {
-        return (path.size() && isSlash(path.back())) || isGlob(path);
-    }
-
-    inline std::string joinImpl(bool first = false) { return std::string(); }
-
-    template <typename ...Paths>
-    inline std::string joinImpl(
-            bool first,
-            std::string current,
-            Paths&&... paths)
-    {
-        const bool currentIsDir(current.size() && isSlash(current.back()));
-        std::string next(joinImpl(false, std::forward<Paths>(paths)...));
-
-        // Strip slashes from the front of our remainder.
-        while (next.size() && isSlash(next.front())) next = next.substr(1);
-
-        if (first)
-        {
-            // If this is the first component, strip a single trailing slash if
-            // one exists - but do not strip a double trailing slash since we
-            // want to retain Windows paths like "C://".
-            if (
-                    current.size() > 1 &&
-                    isSlash(current.back()) &&
-                    !isSlash(current.at(current.size() - 2)))
-            {
-                current.pop_back();
-            }
-        }
-        else
-        {
-            while (current.size() && isSlash(current.back()))
-            {
-                current.pop_back();
-            }
-            if (current.empty()) return next;
-        }
-
-        std::string sep;
-
-        if (next.size() && (current.empty() || !isSlash(current.back())))
-        {
-            // We are going to join current with a populated subpath, so make
-            // sure they are separated by a slash.
-#ifdef ARBITER_WINDOWS
-            sep = "\\";
-#else
-            sep = "/";   
-#endif
-        }
-        else if (next.empty() && currentIsDir)
-        {
-            // We are at the end of the chain, and the last component was a
-            // directory.  Retain its trailing slash.
-            if (current.size() && !isSlash(current.back()))
-            {
-#ifdef ARBITER_WINDOWS
-                sep = "\\";
-#else
-                sep = "/";   
-#endif
-
-            }
-        }
-
-        return current + sep + next;
-    }
-    /** @endcond */
-
-    /** @brief Join one or more path components "intelligently".
-     *
-     * The result is the concatenation of @p path and any members of @p paths
-     * with exactly one slash preceding each non-empty portion of @p path or
-     * @p paths.  Portions of @p paths will be stripped of leading slashes prior
-     * to processing, so portions containing only slashes are considered empty.
-     *
-     * If @p path contains a single trailing slash preceded by a non-slash
-     * character, then that slash will be stripped prior to processing.
-     *
-     * @code
-     * join("")                                 // ""
-     * join("/")                                // "/"
-     * join("/var", "log", "arbiter.log")       // "/var/log/arbiter.log"
-     * join("/var/", "log", "arbiter.log")      // "/var/log/arbiter.log"
-     * join("", "var", "log", "arbiter.log")    // "/var/log/arbiter.log"
-     * join("/", "/var", "log", "arbiter.log")  // "/var/log/arbiter.log"
-     * join("", "/var", "log", "arbiter.log")   // "/var/log/arbiter.log"
-     * join("~", "code", "", "test.cpp", "/")   // "~/code/test.cpp"
-     * join("C:\\", "My Documents")             // "C:/My Documents"
-     * join("s3://", "bucket", "object.txt")    // "s3://bucket/object.txt"
-     * @endcode
-     */
-    template <typename ...Paths>
-    inline std::string join(std::string path, Paths&&... paths)
-    {
-        return joinImpl(true, path, std::forward<Paths>(paths)...);
-    }
-
-    /** @brief Extract an environment variable, if it exists, independent of
-     * platform.
-     */
-    ARBITER_DLL std::unique_ptr<std::string> env(const std::string& var);
-
-    /** @brief Split a string on a token. */
-    ARBITER_DLL std::vector<std::string> split(const std::string& s, char delimiter = '\n');
-
-    /** @brief Remove whitespace. */
-    ARBITER_DLL std::string stripWhitespace(const std::string& s);
-
-    template<typename T, typename... Args>
-    std::unique_ptr<T> makeUnique(Args&&... args)
-    {
-        return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-    }
-
-    template<typename T>
-    std::unique_ptr<T> clone(const T& t)
-    {
-        return makeUnique<T>(t);
-    }
-
-    template<typename T>
-    std::unique_ptr<T> maybeClone(const T* t)
-    {
-        if (t) return makeUnique<T>(*t);
-        else return std::unique_ptr<T>();
-    }
-
-    inline Json::Value parse(const std::string& s)
-    {
-        Json::Reader reader;
-        Json::Value json;
-        if (!reader.parse(s, json))
-        {
-            throw std::runtime_error(
-                    "Parse failure: " + reader.getFormattedErrorMessages());
-        }
-        return json;
-    }
-
-    inline std::string toFastString(const Json::Value& json)
-    {
-        std::string s = Json::FastWriter().write(json);
-        s.pop_back();   // Strip trailing newline.
-        return s;
-    }
-
-} // namespace util
-
-} // namespace arbiter
-
-#ifdef ARBITER_CUSTOM_NAMESPACE
-}
-#endif
-
-
-// //////////////////////////////////////////////////////////////////////
-// End of content of file: arbiter/util/util.hpp
 // //////////////////////////////////////////////////////////////////////
 
 
@@ -4633,11 +4246,9 @@ public:
      */
     static std::vector<std::unique_ptr<S3>> create(
             http::Pool& pool,
-            const Json::Value& json);
+            std::string j);
 
-    static std::unique_ptr<S3> createOne(
-            http::Pool& pool,
-            const Json::Value& json);
+    static std::unique_ptr<S3> createOne(http::Pool& pool, std::string j);
 
     // Overrides.
     virtual std::string type() const override;
@@ -4655,12 +4266,14 @@ public:
     virtual void copy(std::string src, std::string dst) const override;
 
 private:
-    static std::string extractProfile(const Json::Value& json);
+    static std::string extractProfile(std::string j);
 
+    /*
     static std::unique_ptr<Config> extractConfig(
-            const Json::Value& json,
+            std::string j,
             std::string profile);
 
+            */
     /** Inherited from Drivers::Http. */
     virtual bool get(
             std::string path,
@@ -4707,12 +4320,10 @@ public:
     { }
 
     Auth(std::string iamRole)
-        : m_role(util::makeUnique<std::string>(iamRole))
+        : m_role(internal::makeUnique<std::string>(iamRole))
     { }
 
-    static std::unique_ptr<Auth> create(
-            const Json::Value& json,
-            std::string profile);
+    static std::unique_ptr<Auth> create(std::string j, std::string profile);
 
     AuthFields fields() const;
 
@@ -4729,7 +4340,7 @@ private:
 class S3::Config
 {
 public:
-    Config(const Json::Value& json, std::string profile);
+    Config(std::string j, std::string profile);
 
     const std::string& region() const { return m_region; }
     const std::string& baseUrl() const { return m_baseUrl; }
@@ -4737,18 +4348,13 @@ public:
     bool precheck() const { return m_precheck; }
 
 private:
-    static std::string extractRegion(
-            const Json::Value& json,
-            std::string profile);
-
-    static std::string extractBaseUrl(
-            const Json::Value& json,
-            std::string region);
+    static std::string extractRegion(std::string j, std::string profile);
+    static std::string extractBaseUrl(std::string j, std::string region);
 
     const std::string m_region;
     const std::string m_baseUrl;
     http::Headers m_baseHeaders;
-    const bool m_precheck;
+    bool m_precheck;
 };
 
 
@@ -4836,6 +4442,225 @@ private:
 
 
 // //////////////////////////////////////////////////////////////////////
+// Beginning of content of file: arbiter/drivers/az.hpp
+// //////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#ifndef ARBITER_IS_AMALGAMATION
+#include <arbiter/util/time.hpp>
+#include <arbiter/util/util.hpp>
+#include <arbiter/drivers/http.hpp>
+#endif
+
+#ifdef ARBITER_CUSTOM_NAMESPACE
+namespace ARBITER_CUSTOM_NAMESPACE
+{
+#endif
+
+namespace arbiter
+{
+
+namespace drivers
+{
+
+/** @brief Microsoft %Azure blob driver. */
+class AZ : public Http
+{
+    class AuthFields;
+    class Config;
+
+public:
+    AZ(
+            http::Pool& pool,
+            std::string profile,
+            std::unique_ptr<Config> config);
+
+    /** Try to construct an Azure blob driver.  The configuration/credential discovery
+     * follows, in order:
+     *      - Environment settings.
+     *      - Arbiter JSON configuration.
+     */
+    static std::vector<std::unique_ptr<AZ>> create(
+            http::Pool& pool,
+            std::string j);
+
+    static std::unique_ptr<AZ> createOne(http::Pool& pool, std::string j);
+
+    // Overrides.
+    virtual std::string type() const override;
+
+    virtual std::unique_ptr<std::size_t> tryGetSize(
+            std::string path) const override;
+
+    /** Inherited from Drivers::Http. */
+    virtual void put(
+            std::string path,
+            const std::vector<char>& data,
+            http::Headers headers,
+            http::Query query) const override;
+
+    virtual void copy(std::string src, std::string dst) const override;
+
+private:
+    static std::string extractProfile(std::string j);
+
+    /*
+    static std::unique_ptr<Config> extractConfig(
+            std::string j,
+            std::string profile);
+
+            */
+    /** Inherited from Drivers::Http. */
+    virtual bool get(
+            std::string path,
+            std::vector<char>& data,
+            http::Headers headers,
+            http::Query query) const override;
+
+    virtual std::vector<std::string> glob(
+            std::string path,
+            bool verbose) const override;
+
+    class ApiV1;
+    class Resource;
+
+    std::string m_profile;
+    std::unique_ptr<Config> m_config;
+};
+
+class AZ::AuthFields
+{
+public:
+    AuthFields(std::string account, std::string key="")
+        : m_storageAccount(account), m_storageAccessKey(key)
+    { }
+
+    const std::string& account() const { return m_storageAccount; }
+    const std::string& key() const { return m_storageAccessKey; }
+
+private:
+    std::string m_storageAccount;
+    std::string m_storageAccessKey;
+};
+
+class AZ::Config
+{
+
+public:
+    Config(std::string j, std::string profile);
+
+    const std::string& service() const { return m_service; }
+    const std::string& storageAccount() const { return m_storageAccount; }
+    const std::string& endpoint() const { return m_endpoint; }
+    const std::string& baseUrl() const { return m_baseUrl; }
+    const http::Headers& baseHeaders() const { return m_baseHeaders; }
+    bool precheck() const { return m_precheck; }
+
+    AuthFields authFields() const { return AuthFields(m_storageAccount, m_storageAccessKey); }
+
+private:
+    static std::string extractService(std::string j, std::string profile);
+    static std::string extractEndpoint(std::string j, std::string profile);
+    static std::string extractBaseUrl(std::string j, std::string endpoint, std::string service, std::string account);
+    static std::string extractStorageAccount(std::string j, std::string profile);
+    static std::string extractStorageAccessKey(std::string j, std::string profile);
+
+    const std::string m_service;
+    const std::string m_storageAccount;
+    const std::string m_storageAccessKey;
+    const std::string m_endpoint;
+    const std::string m_baseUrl;
+    http::Headers m_baseHeaders;
+    bool m_precheck;
+};
+
+
+
+class AZ::Resource
+{
+public:
+    Resource(std::string baseUrl, std::string fullPath);
+
+    std::string url() const;
+    std::string host() const;
+    std::string baseUrl() const;
+    std::string bucket() const;
+    std::string object() const;
+    std::string blob() const;
+    std::string storageAccount() const;
+
+private:
+    std::string m_baseUrl;
+    std::string m_bucket;
+    std::string m_object;
+    std::string m_storageAccount;
+};
+
+class AZ::ApiV1
+{
+public:
+    ApiV1(
+            std::string verb,
+            const Resource& resource,
+            const AZ::AuthFields authFields,
+            const http::Query& query,
+            const http::Headers& headers,
+            const std::vector<char>& data);
+
+    const http::Headers& headers() const { return m_headers; }
+    const http::Query& query() const { return m_query; }
+
+private:
+    std::string buildCanonicalResource(
+            const Resource& resource,
+            const http::Query& query) const;
+
+    std::string buildCanonicalHeader(
+            http::Headers & msHeaders,
+            const http::Headers & existingHeaders) const;
+
+    std::string buildStringToSign(
+            const std::string& verb,
+            const http::Headers& headers,
+            const std::string& canonicalHeaders,
+            const std::string& canonicalRequest) const;
+
+    std::string calculateSignature(
+            const std::string& stringToSign) const;
+
+    std::string getAuthHeader(
+            const std::string& signedHeadersString) const;
+
+    const AZ::AuthFields m_authFields;
+    const Time m_time;
+
+    http::Headers m_headers;
+    http::Query m_query;
+};
+
+} // namespace drivers
+} // namespace arbiter
+
+#ifdef ARBITER_CUSTOM_NAMESPACE
+}
+#endif
+
+
+// //////////////////////////////////////////////////////////////////////
+// End of content of file: arbiter/drivers/az.hpp
+// //////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+// //////////////////////////////////////////////////////////////////////
 // Beginning of content of file: arbiter/drivers/google.hpp
 // //////////////////////////////////////////////////////////////////////
 
@@ -4864,9 +4689,7 @@ class Google : public Https
 public:
     Google(http::Pool& pool, std::unique_ptr<Auth> auth);
 
-    static std::unique_ptr<Google> create(
-            http::Pool& pool,
-            const Json::Value& json);
+    static std::unique_ptr<Google> create(http::Pool& pool, std::string j);
 
     // Overrides.
     virtual std::string type() const override { return "gs"; }  // Match gsutil.
@@ -4899,8 +4722,8 @@ private:
 class Google::Auth
 {
 public:
-    Auth(const Json::Value& creds);
-    static std::unique_ptr<Auth> create(const Json::Value& json);
+    Auth(std::string s);
+    static std::unique_ptr<Auth> create(std::string s);
 
     http::Headers headers() const;
 
@@ -4908,7 +4731,8 @@ private:
     void maybeRefresh() const;
     std::string sign(std::string data, std::string privateKey) const;
 
-    const Json::Value m_creds;
+    const std::string m_clientEmail;
+    const std::string m_privateKey;
     mutable int64_t m_expiration = 0;   // Unix time.
     mutable http::Headers m_headers;
 
@@ -4964,12 +4788,11 @@ public:
     class Auth;
     Dropbox(http::Pool& pool, const Auth& auth);
 
-    /** Try to construct a %Dropbox Driver.  Searches @p json for the key
-     * `token` to construct a DropboxAuth.
+    /** Try to construct a %Dropbox Driver.  @p j may be stringified JSON, in
+     * which the key `token` will be used to construct the Dropbox auth, or
+     * may simply be the token string itself.
      */
-    static std::unique_ptr<Dropbox> create(
-            http::Pool& pool,
-            const Json::Value& json);
+    static std::unique_ptr<Dropbox> create(http::Pool& pool, std::string j);
 
     virtual std::string type() const override { return "dropbox"; }
     virtual void put(
@@ -5059,7 +4882,7 @@ namespace drivers
 class Test : public Fs
 {
 public:
-    static std::unique_ptr<Test> create(const Json::Value& json)
+    static std::unique_ptr<Test> create()
     {
         return std::unique_ptr<Test>(new Test());
     }
@@ -5142,6 +4965,9 @@ class ARBITER_DLL Endpoint
     friend class Arbiter;
 
 public:
+    Endpoint() : m_driver(nullptr)
+    {}
+
     /** Returns root directory name without any type-prefixing, and will
      * always end with the character `/`.  For example `~/data/`, or
      * `my-bucket/nested-directory/`.
@@ -5169,7 +4995,10 @@ public:
     bool isHttpDerived() const;
 
     /** See Arbiter::getLocalHandle. */
-    std::unique_ptr<fs::LocalHandle> getLocalHandle(std::string subpath) const;
+    LocalHandle getLocalHandle(
+            std::string subpath,
+            http::Headers headers = http::Headers(),
+            http::Query query = http::Query()) const;
 
     /** Passthrough to Driver::get. */
     std::string get(std::string subpath) const;
@@ -5228,6 +5057,22 @@ public:
             std::string path,
             http::Headers headers,
             http::Query query = http::Query()) const;
+
+    /** Passthrough to
+     * drivers::Http::getSize(std::string, http::Headers, http::Query) const.
+     */
+    std::size_t getSize(
+            std::string subpath,
+            http::Headers headers,
+            http::Query = http::Query()) const;
+
+    /** Passthrough to
+     * drivers::Http::tryGetSize(std::string, http::Headers, http::Query) const.
+     */
+    std::unique_ptr<std::size_t> tryGetSize(
+            std::string subpath,
+            http::Headers headers,
+            http::Query = http::Query()) const;
 
     /** Passthrough to
      * drivers::Http::put(std::string, const std::string&, http::Headers, http::Query) const.
@@ -5295,7 +5140,7 @@ private:
     const drivers::Http* tryGetHttpDriver() const;
     const drivers::Http& getHttpDriver() const;
 
-    const Driver& m_driver;
+    const Driver* m_driver;
     std::string m_root;
 };
 
@@ -5336,21 +5181,11 @@ private:
 #include <arbiter/drivers/google.hpp>
 #include <arbiter/drivers/http.hpp>
 #include <arbiter/drivers/s3.hpp>
+#include <arbiter/drivers/az.hpp>
 #include <arbiter/drivers/test.hpp>
 #include <arbiter/util/exports.hpp>
 #include <arbiter/util/types.hpp>
 #include <arbiter/util/util.hpp>
-
-#ifndef ARBITER_EXTERNAL_JSON
-#include <arbiter/third/json/json.hpp>
-#endif
-
-#endif
-
-
-
-#ifdef ARBITER_EXTERNAL_JSON
-#include <json/json.h>
 #endif
 
 #ifdef ARBITER_CUSTOM_NAMESPACE
@@ -5384,7 +5219,7 @@ public:
     Arbiter();
 
     /** @brief Construct an Arbiter with driver configurations. */
-    Arbiter(const Json::Value& json);
+    Arbiter(std::string stringifiedJson);
 
     /** True if a Driver has been registered for this file type. */
     bool hasDriver(std::string path) const;
@@ -5475,8 +5310,8 @@ public:
      * If @p src ends with a slash, it will be resolved with a recursive glob,
      * in which case any nested directory structure will be recreated in @p dst.
      *
-     * If @p dst is a filesystem path, fs::mkdirp will be called prior to the
-     * start of copying.  If @p src is a recursive glob, `fs::mkdirp` will
+     * If @p dst is a filesystem path, mkdirp will be called prior to the
+     * start of copying.  If @p src is a recursive glob, `mkdirp` will
      * be repeatedly called during copying to ensure that any nested directories
      * are reproduced.
      */
@@ -5487,7 +5322,7 @@ public:
      * directory @p to with the basename of @p file.  If @p to does not end
      * with a slash character, then @p to will be interpreted as a file path.
      *
-     * If @p to is a local filesystem path, then `fs::mkdirp` will be called
+     * If @p to is a local filesystem path, then `mkdirp` will be called
      * prior to copying.
      */
     void copyFile(std::string file, std::string to, bool verbose = false) const;
@@ -5565,7 +5400,7 @@ public:
      */
     const Driver& getDriver(std::string path) const;
 
-    /** @brief Get a fs::LocalHandle to a possibly remote file.
+    /** @brief Get a LocalHandle to a possibly remote file.
      *
      * If @p path is remote (see Arbiter::isRemote), this operation will fetch
      * the file contents and write them to the local filesystem in the
@@ -5583,36 +5418,30 @@ public:
      * @param tempEndpoint If @path is remote, the local copy will be created
      * at this Endpoint.
      *
-     * @return A fs::LocalHandle for local access to the resulting file.
+     * @return A LocalHandle for local access to the resulting file.
      */
-    std::unique_ptr<fs::LocalHandle> getLocalHandle(
+    LocalHandle getLocalHandle(
             std::string path,
             const Endpoint& tempEndpoint) const;
 
-    /** @brief Get a fs::LocalHandle to a possibly remote file.
+    /** @brief Get a LocalHandle to a possibly remote file.
      *
      * If @p tempPath is not specified, the environment will be searched for a
      * temporary location.
      */
-    std::unique_ptr<fs::LocalHandle> getLocalHandle(
+    LocalHandle getLocalHandle(
             std::string path,
             std::string tempPath = "") const;
 
-    /** If no delimiter of "://" is found, returns "file".  Otherwise, returns
-     * the substring prior to but not including this delimiter.
+    /** @brief Get a LocalHandle to a possibly remote file.
+     *
+     * If @p tempPath is not specified, the environment will be searched for a
+     * temporary location.
      */
-    static std::string getType(std::string path);
-
-    /** Strip the type and delimiter `://`, if they exist. */
-    static std::string stripType(std::string path);
-
-    /** Get the characters following the final instance of '.', or an empty
-     * string if there are no '.' characters. */
-    static std::string getExtension(std::string path);
-
-    /** Strip the characters following (and including) the final instance of
-     * '.' if one exists, otherwise return the full path. */
-    static std::string stripExtension(std::string path);
+    LocalHandle getLocalHandle(
+            std::string path,
+            http::Headers headers,
+            http::Query query = http::Query()) const;
 
     /** Fetch the common HTTP pool, which may be useful when dynamically
      * constructing adding a Driver via Arbiter::addDriver.

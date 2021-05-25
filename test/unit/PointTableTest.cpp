@@ -62,47 +62,47 @@ TEST(PointTable, resolveType)
     EXPECT_EQ(layout->dimType(Id::X), Type::Double);
 
     /// Build as we go.
-    layout->registerDim(Id::Y, Type::Unsigned8);
-    EXPECT_EQ(layout->dimSize(Id::Y), 1u);
-    EXPECT_EQ(layout->dimType(Id::Y), Type::Unsigned8);
+    layout->registerDim(Id::Intensity, Type::Unsigned8);
+    EXPECT_EQ(layout->dimSize(Id::Intensity), 1u);
+    EXPECT_EQ(layout->dimType(Id::Intensity), Type::Unsigned8);
 
-    layout->registerDim(Id::Y, Type::Unsigned8);
-    EXPECT_EQ(layout->dimSize(Id::Y), 1u);
-    EXPECT_EQ(layout->dimType(Id::Y), Type::Unsigned8);
+    layout->registerDim(Id::Intensity, Type::Unsigned8);
+    EXPECT_EQ(layout->dimSize(Id::Intensity), 1u);
+    EXPECT_EQ(layout->dimType(Id::Intensity), Type::Unsigned8);
 
-    layout->registerDim(Id::Y, Type::Signed8);
-    // Signed 8 and Unsigned 8 should yeild signed 16.
-    EXPECT_EQ(layout->dimSize(Id::Y), 2u);
-    EXPECT_EQ(layout->dimType(Id::Y), Type::Signed16);
+    layout->registerDim(Id::Intensity, Type::Signed8);
+    // Signed 8 and Unsigned 8 should yield signed 16.
+    EXPECT_EQ(layout->dimSize(Id::Intensity), 2u);
+    EXPECT_EQ(layout->dimType(Id::Intensity), Type::Signed16);
 
-    layout->registerDim(Id::Y, Type::Signed16);
-    EXPECT_EQ(layout->dimSize(Id::Y), 2u);
-    EXPECT_EQ(layout->dimType(Id::Y), Type::Signed16);
+    layout->registerDim(Id::Intensity, Type::Signed16);
+    EXPECT_EQ(layout->dimSize(Id::Intensity), 2u);
+    EXPECT_EQ(layout->dimType(Id::Intensity), Type::Signed16);
 
-    layout->registerDim(Id::Y, Type::Float);
-    EXPECT_EQ(layout->dimSize(Id::Y), 4u);
-    EXPECT_EQ(layout->dimType(Id::Y), Type::Float);
+    layout->registerDim(Id::Intensity, Type::Float);
+    EXPECT_EQ(layout->dimSize(Id::Intensity), 4u);
+    EXPECT_EQ(layout->dimType(Id::Intensity), Type::Float);
 
-    layout->registerDim(Id::Y, Type::Double);
-    EXPECT_EQ(layout->dimSize(Id::Y), 8u);
-    EXPECT_EQ(layout->dimType(Id::Y), Type::Double);
+    layout->registerDim(Id::Intensity, Type::Double);
+    EXPECT_EQ(layout->dimSize(Id::Intensity), 8u);
+    EXPECT_EQ(layout->dimType(Id::Intensity), Type::Double);
 
     ///
-    layout->registerDim(Id::Z, Type::Unsigned16);
-    EXPECT_EQ(layout->dimSize(Id::Z), 2u);
-    EXPECT_EQ(layout->dimType(Id::Z), Type::Unsigned16);
+    layout->registerDim(Id::Red, Type::Unsigned16);
+    EXPECT_EQ(layout->dimSize(Id::Red), 2u);
+    EXPECT_EQ(layout->dimType(Id::Red), Type::Unsigned16);
 
-    layout->registerDim(Id::Z, Type::Signed8);
-    EXPECT_EQ(layout->dimSize(Id::Z), 4u);
-    EXPECT_EQ(layout->dimType(Id::Z), Type::Signed32);
+    layout->registerDim(Id::Red, Type::Signed8);
+    EXPECT_EQ(layout->dimSize(Id::Red), 4u);
+    EXPECT_EQ(layout->dimType(Id::Red), Type::Signed32);
 
-    layout->registerDim(Id::Z, Type::Signed16);
-    EXPECT_EQ(layout->dimSize(Id::Z), 4u);
-    EXPECT_EQ(layout->dimType(Id::Z), Type::Signed32);
+    layout->registerDim(Id::Red, Type::Signed16);
+    EXPECT_EQ(layout->dimSize(Id::Red), 4u);
+    EXPECT_EQ(layout->dimType(Id::Red), Type::Signed32);
 
-    layout->registerDim(Id::Z, Type::Double);
-    EXPECT_EQ(layout->dimSize(Id::Z), 8u);
-    EXPECT_EQ(layout->dimType(Id::Z), Type::Double);
+    layout->registerDim(Id::Red, Type::Double);
+    EXPECT_EQ(layout->dimSize(Id::Red), 8u);
+    EXPECT_EQ(layout->dimType(Id::Red), Type::Double);
 }
 
 TEST(PointTable, userView)
@@ -252,9 +252,55 @@ TEST(PointTable, simple)
 {
     PointTable t;
     simpleTest(t);
+}
 
-    ContiguousPointTable t2;
-    simpleTest(t2);
+TEST(PointTable, layoutLimit)
+{
+    PointTable t;
+    PointLayoutPtr layout = t.layout();
+    layout->setAllowedDims({ "X", "Z"});
+
+    layout->registerDim(Dimension::Id::X);
+    layout->registerDim(Dimension::Id::Y);
+    layout->registerDim(Dimension::Id::Z);
+    layout->registerDim(Dimension::Id::Intensity);
+    layout->registerDim(Dimension::Id::Blue);
+    t.finalize();
+
+    PointView v(t);
+    for (PointId id = 0; id < 1000; id++)
+    {
+        if (id % 200 < 100)
+        {
+            v.setField(Dimension::Id::X, id, id);
+            v.setField(Dimension::Id::Y, id, id + 1);
+            v.setField(Dimension::Id::Z, id, id + 2);
+            v.setField(Dimension::Id::Intensity, id, (id * 100) % 6523);
+        }
+        else
+        {
+            v.setField(Dimension::Id::X, id, 0);
+            v.setField(Dimension::Id::Blue, id, id);
+        }
+    }
+
+    for (PointId id = 0; id < 1000; id++)
+    {
+        if (id % 200 < 100)
+        {
+            EXPECT_EQ(id, v.getFieldAs<PointId>(Dimension::Id::X, id));
+            EXPECT_EQ(id + 1, v.getFieldAs<PointId>(Dimension::Id::Y, id));
+            EXPECT_EQ(id + 2, v.getFieldAs<PointId>(Dimension::Id::Z, id));
+        }
+        else
+        {
+            EXPECT_EQ(0U, v.getFieldAs<PointId>(Dimension::Id::X, id));
+            EXPECT_EQ(0U, v.getFieldAs<PointId>(Dimension::Id::Y, id));
+            EXPECT_EQ(0U, v.getFieldAs<PointId>(Dimension::Id::Z, id));
+        }
+        EXPECT_EQ(0U, v.getFieldAs<PointId>(Dimension::Id::Intensity, id));
+        EXPECT_EQ(0U, v.getFieldAs<PointId>(Dimension::Id::Blue, id));
+    }
 }
 
 } // namespace

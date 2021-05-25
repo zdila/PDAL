@@ -15,10 +15,13 @@ This exercise uses PDAL to reproject |ASPRSLAS| data
 .. _`LASzip`: http://laszip.org
 .. _`ASPRS LAS`: http://www.asprs.org/Committee-General/LASer-LAS-File-Format-Exchange-Activities.html
 
-Issue the following command in your `OSGeo4W Shell`.
+Issue the following command in your |Terminal|:
 
 
 .. literalinclude:: ./reprojection-command-1.txt
+    :linenos:
+
+.. literalinclude:: ./reprojection-command-1-win.txt
     :linenos:
 
 .. image:: ../../images/reprojection-run-command.png
@@ -30,7 +33,12 @@ Unfortunately this doesn't produce the intended results for us. Issue the follow
 
 ::
 
-        pdal info c:/Users/hobu/PDAL/exercises/translation/csite-dd.laz --all ^
+        pdal info ./exercises/translation/csite-dd.laz --all \
+            | jq .stats.bbox.native.bbox
+
+::
+
+        pdal info ./exercises/translation/csite-dd.laz --all ^
             | jq .stats.bbox.native.bbox
 
 .. image:: ../../images/reprojection-wrong-scale.png
@@ -57,6 +65,9 @@ to ``auto`` so you don't have to compute it.
 .. literalinclude:: ./reprojection-command-2.txt
     :linenos:
 
+.. literalinclude:: ./reprojection-command-2-win.txt
+    :linenos:
+
 .. image:: ../../images/reprojection-run-with-scale.png
     :target: ../../../_images/reprojection-run-with-scale.png
 
@@ -79,5 +90,3 @@ Notes
 
 2. PDAL uses |Proj.4| library for reprojection. This library includes
    the capability to do both vertical and horizontal datum transformations.
-
-

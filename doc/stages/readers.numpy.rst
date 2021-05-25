@@ -17,7 +17,7 @@ extension ``.npy``. As of PDAL 1.7.0, ``.npz`` files were not yet supported.
 Array Types
 -----------
 
-:ref:`readers.numpy` supports reading data in two forms:
+readers.numpy supports reading data in two forms:
 
 * As a `structured array`_ with specified field names (from `laspy`_ for
   example)
@@ -43,7 +43,7 @@ of fields.  Each field has a name.  As an example, `laspy`_ provides its
     array([ ((63608330, 84939865, 40735, 65, 73, 1, -11, 126, 7326,  245385.60820904),)],
     dtype=[('point', [('X', '<i4'), ('Y', '<i4'), ('Z', '<i4'), ('intensity', '<u2'), ('flag_byte', 'u1'), ('raw_classification', 'u1'), ('scan_angle_rank', 'i1'), ('user_data', 'u1'), ('pt_src_id', '<u2'), ('gps_time', '<f8')])])
 
-:ref:`readers.numpy` supports reading these Numpy arrays and mapping
+The numpy reader supports reading these Numpy arrays and mapping
 field names to standard PDAL :ref:`dimension <dimensions>` names.
 If that fails, the reader retries by removing ``_``, ``-``, or ``space``
 in turn.  If that also fails, the array field names are used to create
@@ -138,21 +138,96 @@ column-major (Fortran) order by using the ``order`` option.
 
 .. streamable::
 
+Loading Options
+--------------------------------------------------------------------------------
+
+:ref:`readers.numpy` supports two modes of operation - the first is to pass a
+reference to a ``.npy`` file to the ``filename`` argument. It will simply load
+it and read.
+
+The second is to provide a reference to a ``.py`` script to the ``filename`` argument.
+It will then invoke the Python function specified in ``module`` and ``function`` with
+the ``fargs`` that you provide.
+
+
+Loading from a Python script
+................................................................................
+
+A reference to a Python function that returns a Numpy array can also be used
+to tell :ref:`readers.numpy` what to load. The following example itself loads
+a Numpy array from a Python script
+
+Python Script
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    import numpy as np
+
+    def load(filename):
+        array = np.load(filename)
+        return array
+
+Command Line Invocation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Using the above Python file with its ``load`` function, the following
+:ref:`pdal_info` invocation passes in the reference to the filename to load.
+
+::
+
+    pdal info threedim.py  \
+        --readers.numpy.function=load \
+        --readers.numpy.fargs=threedim.npy \
+        --driver readers.numpy
+
+Pipeline
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example :ref:`pipeline` definition would follow:
+
+.. code-block:: json
+
+    [
+        {
+            "function": "load",
+            "filename": "threedim.py",
+            "fargs": "threedim.npy",
+            "type": "readers.numpy"
+        },
+
+        ...
+    ]
+
 Options
 -------
 
 filename
-  npy file to read [Required]
+  npy file to read or optionally, a .py file that defines
+  a function that returns a Numpy array using the
+  ``module``, ``function``, and ``fargs`` options. [Required]
 
 .. include:: reader_opts.rst
 
 dimension
-  Dimension name from :ref:`dimensions` to map raster values
+  :ref:`Dimension <dimensions>` name to map raster values
 
 order
   Either 'row' or 'column' to specify assigning the X,Y and Z values
   in a row-major or column-major order. [Default: matches the natural
   order of the array.]
+
+
+
+
+module
+  The Python module name that is holding the function to run.
+
+function
+  The function name in the module to call.
+
+fargs
+  The function args to pass to the function
 
 .. note::
     The functionality of the 'assign_z' option in previous versions is

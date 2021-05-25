@@ -33,10 +33,11 @@
 ****************************************************************************/
 
 #include <pdal/pdal_test_main.hpp>
-#include <pdal/GDALUtils.hpp>
 #include <pdal/util/FileUtils.hpp>
+#include <pdal/private/gdal/Raster.hpp>
 #include <filters/RangeFilter.hpp>
 #include <io/BufferReader.hpp>
+#include <io/FauxReader.hpp>
 #include <io/GDALWriter.hpp>
 #include <io/LasReader.hpp>
 #include <io/TextReader.hpp>
@@ -84,8 +85,6 @@ void runGdalWriter(const Options& wo, const std::string& infile,
             w.execute(t);
         }
 
-        using namespace gdal;
-
         std::istringstream iss(values);
 
         std::vector<double> arr;
@@ -98,9 +97,8 @@ void runGdalWriter(const Options& wo, const std::string& infile,
             arr.push_back(d);
         }
 
-        registerDrivers();
-        Raster raster(outfile, "GTiff");
-        if (raster.open() != GDALError::None)
+        gdal::Raster raster(outfile, "GTiff");
+        if (raster.open() != gdal::GDALError::None)
         {
             throw pdal_error(raster.errorMsg());
         }
@@ -108,6 +106,7 @@ void runGdalWriter(const Options& wo, const std::string& infile,
         raster.readBand(data, 1);
         int row = 0;
         int col = 0;
+
         for (size_t i = 0; i < arr.size(); ++i)
         {
             EXPECT_NEAR(arr[i], data[i], .001) << "Error row/col = " <<
@@ -175,9 +174,8 @@ void runGdalWriter2(const Options& wo, const std::string& outfile,
         arr.push_back(d);
     }
 
-    registerDrivers();
-    Raster raster(outfile, "GTiff");
-    if (raster.open() != GDALError::None)
+    gdal::Raster raster(outfile, "GTiff");
+    if (raster.open() != gdal::GDALError::None)
     {
         throw pdal_error(raster.errorMsg());
     }
@@ -223,7 +221,11 @@ TEST(GDALWriterTest, min2)
     wo.add("filename", outfile);
 
     Options wo2 = wo;
-    wo2.add("bounds", "([-2, 4.7],[-2, 6.5])");
+//    wo2.add("bounds", "([-2, 4.7],[-2, 6.5])");
+    wo2.add("origin_x", -2);
+    wo2.add("origin_y", -2);
+    wo2.add("width", 7);
+    wo2.add("height", 9);
 
     const std::string output =
         "-9999.000 -9999.00 -9999.00 -9999.00 -9999.00 -9999.00    -1.00"
@@ -576,9 +578,8 @@ TEST(GDALWriterTest, btint)
         arr.push_back(d);
     }
 
-    registerDrivers();
-    Raster raster(outfile, "BT");
-    if (raster.open() != GDALError::None)
+    gdal::Raster raster(outfile, "BT");
+    if (raster.open() != gdal::GDALError::None)
     {
         throw pdal_error(raster.errorMsg());
     }
@@ -629,7 +630,11 @@ TEST(GDALWriterTest, bounds)
     wo.add("resolution", 1);
     wo.add("radius", .7071);
     wo.add("filename", outfile);
-    wo.add("bounds", "([0, 4.5],[0, 4.5])");
+//    wo.add("bounds", "([0, 4.5],[0, 4.5])");
+    wo.add("origin_x", 0);
+    wo.add("origin_y", 0);
+    wo.add("height", 5);
+    wo.add("width", 5);
 
     const std::string output =
         "5.000 -9999.000     7.000     8.000     8.967 "
@@ -688,7 +693,6 @@ TEST(GDALWriterTest, issue_2074)
     w.prepare(t);
     w.execute(t);
 
-    gdal::registerDrivers();
     gdal::Raster raster(Support::temppath("gdal1.tif"), "GTiff");
     if (raster.open() != gdal::GDALError::None)
     {
@@ -729,16 +733,167 @@ TEST(GDALWriterTest, issue_2074)
     EXPECT_EQ(raster3.height(), 7);
 }
 
-TEST(GDALWriterTest, issue_2095)
+// If the radius is sufficiently large, make sure the grid is filled.
+TEST(GDALWriterTest, issue_2545)
 {
-    GDALGrid grid(5, 5, 1, .7, GDALGrid::statCount | GDALGrid::statMin, 0);
+    TextReader r;
+    Options rOpts;
 
-    EXPECT_EQ(grid.verticalIndex(0), 4);
-    EXPECT_EQ(grid.verticalIndex(.5), 4);
-    EXPECT_EQ(grid.verticalIndex(1), 3);
-    EXPECT_EQ(grid.verticalIndex(1.5), 3);
-    EXPECT_EQ(grid.verticalIndex(4), 0);
-    EXPECT_EQ(grid.verticalIndex(4.5), 0);
+    rOpts.add("filename", Support::datapath("gdal/issue_2545.txt"));
+    r.setOptions(rOpts);
+
+    std::string outfile(Support::temppath("gdal.tif"));
+
+    GDALWriter w;
+    Options wOpts;
+    wOpts.add("resolution", 1);
+    wOpts.add("radius", 10);
+    wOpts.add("output_type", "idw");
+    wOpts.add("gdaldriver", "GTiff");
+    wOpts.add("origin_x", .5);
+    wOpts.add("origin_y", .5);
+    wOpts.add("width", 7);
+    wOpts.add("height", 7);
+//    wOpts.add("bounds", BOX2D(.5, .5, 6.5, 6.5));
+    wOpts.add("filename", outfile);
+
+    w.setOptions(wOpts);
+    w.setInput(r);
+
+    PointTable t;
+    w.prepare(t);
+    w.execute(t);
+
+    gdal::Raster raster(outfile, "GTiff");
+    if (raster.open() != gdal::GDALError::None)
+        throw pdal_error(raster.errorMsg());
+
+    EXPECT_EQ(raster.width(), 7);
+    EXPECT_EQ(raster.height(), 7);
+
+    auto index = [](size_t row, size_t col)
+    {
+        return (row * 7) + col;
+    };
+
+    std::vector<double> data;
+    raster.readBand(data, 1);
+    EXPECT_EQ(data[index(1, 0)], 3.0);
+    EXPECT_EQ(data[index(2, 4)], 0.);
+    EXPECT_EQ(data[index(5, 5)], 10.0);
+    EXPECT_EQ(data[index(6, 0)], 5.0);
+    for (size_t i = 0; i < data.size(); ++i)
+        EXPECT_TRUE(data[i] <= 10.0 && data[i] >= 0);
+}
+
+// Test that using the alternate grid specification works
+TEST(GDALWriterTest, alternate_grid)
+{
+    FauxReader r;
+    Options opts;
+    opts.add("count", 1000);
+    opts.add("mode", "constant");
+    r.setOptions(opts);
+
+    std::string outfile(Support::temppath("test.tif"));
+
+    {
+        Options opts;
+        opts.add("origin_x", "10.0");
+        opts.add("filename", outfile);
+        opts.add("resolution", 1.1);
+
+        PointTable t;
+        GDALWriter w;
+        w.setOptions(opts);
+        w.setInput(r);
+        EXPECT_THROW(w.prepare(t), pdal_error);
+    }
+
+    {
+        Options opts;
+        opts.add("origin_x", "10.0");
+        opts.add("origin_y", "20.0");
+        opts.add("width", 10);
+        opts.add("height", 5);
+        opts.add("bounds", "([1, 10],[5, 25])");
+        opts.add("filename", outfile);
+        opts.add("resolution", 1.1);
+
+        PointTable t;
+        GDALWriter w;
+        w.setOptions(opts);
+        w.setInput(r);
+        EXPECT_THROW(w.prepare(t), pdal_error);
+    }
+
+    {
+        Options opts;
+        opts.add("origin_x", "10.0");
+        opts.add("origin_y", "20.0");
+        opts.add("width", 10);
+        opts.add("height", 5);
+        opts.add("filename", outfile);
+        opts.add("resolution", 1);
+
+        PointTable t;
+        GDALWriter w;
+        w.setOptions(opts);
+        w.setInput(r);
+        w.prepare(t);
+        w.execute(t);
+
+        gdal::Raster raster(outfile, "GTiff");
+        raster.open();
+        EXPECT_EQ(raster.width(), 10);
+        EXPECT_EQ(raster.height(), 5);
+    }
+}
+
+TEST(GDALWriterTest, srs)
+{
+    auto test = [](const std::string& sourceSrs, const std::string& defaultSrs,
+        const std::string& overrideSrs, const std::string& testSrs)
+    {
+        std::string outfile(Support::temppath("out.tif"));
+
+        TextReader t;
+        Options to;
+        to.add("filename", Support::datapath("text/with_edgeofflightline.txt"));
+        if (sourceSrs.size())
+            to.add("override_srs", sourceSrs);
+        t.setOptions(to);
+
+        GDALWriter w;
+        Options wo;
+        wo.add("filename", outfile);
+        wo.add("origin_x", 0);
+        wo.add("origin_y", 0);
+        wo.add("width", 1000);
+        wo.add("height", 1000);
+        wo.add("resolution", 10);
+        if (defaultSrs.size())
+            wo.add("default_srs", defaultSrs);
+        if (overrideSrs.size())
+            wo.add("override_srs", overrideSrs);
+        w.setOptions(wo);
+        w.setInput(t);
+
+        FileUtils::deleteFile(outfile);
+        PointTable table;
+        w.prepare(table);
+        w.execute(table);
+
+        gdal::Raster raster(outfile);
+        raster.open();
+        EXPECT_EQ(raster.getSpatialRef(), testSrs);
+    };
+
+    test("", "EPSG:4326", "", "EPSG:4326");
+    test("", "", "EPSG:4326", "EPSG:4326");
+    test("EPSG:4326", "EPSG:2030", "", "EPSG:4326");
+    test("EPSG:4326", "", "EPSG:2030", "EPSG:2030");
+    EXPECT_THROW(test("EPSG:4326", "EPSG:4326", "EPSG:2030", "EPSG:2030"), pdal_error);
 }
 
 } // namespace pdal

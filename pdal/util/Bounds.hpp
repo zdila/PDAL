@@ -36,8 +36,10 @@
 
 #include <cstdint>
 #include <sstream>
+#include <stdexcept>
 
 #include "pdal_util_export.hpp"
+#include "Utils.hpp"
 
 namespace pdal
 {
@@ -48,6 +50,12 @@ namespace pdal
 class PDAL_DLL BOX2D
 {
 public:
+    struct error : public std::runtime_error
+    {
+        error(const std::string& err) : std::runtime_error(err)
+        {}
+    };
+
     double minx;  ///< Minimum X value.
     double maxx;  ///< Maximum X value.
     double miny;  ///< Minimum Y value.
@@ -279,12 +287,22 @@ public:
     }
 
     /**
-      Return a staticly-allocated Bounds extent that represents infinity
+      Return a statically-allocated Bounds extent that represents infinity
 
       \return  A bounds box with infinite bounds,
     */
     static const BOX2D& getDefaultSpatialExtent();
+
+    /**
+      Parse a string as a BOX2D.
+
+      \param s    String representation of the box.
+      \param pos  Position in the string at which to start parsing.
+                  On return set to parsing end position.
+    */
+    void parse(const std::string& s, std::string::size_type& pos);
 };
+
 
 /**
   BOX3D represents a three-dimensional box with double-precision bounds.
@@ -292,6 +310,12 @@ public:
 class PDAL_DLL BOX3D : private BOX2D
 {
 public:
+    struct error : public std::runtime_error
+    {
+        error(const std::string& err) : std::runtime_error(err)
+        {}
+    };
+
     using BOX2D::minx;
     using BOX2D::maxx;
     using BOX2D::miny;
@@ -308,6 +332,8 @@ public:
     BOX3D(const BOX3D& box) :
         BOX2D(box), minz(box.minz), maxz(box.maxz)
     {}
+
+    BOX3D& operator=(const BOX3D& box) = default;
 
     explicit BOX3D(const BOX2D& box) :
         BOX2D(box), minz(0), maxz(0)
@@ -568,11 +594,20 @@ public:
     }
 
     /**
-      Return a staticly-allocated Bounds extent that represents infinity
+      Return a statically-allocated Bounds extent that represents infinity
 
       \return  A bounds box with infinite bounds,
     */
     static const BOX3D& getDefaultSpatialExtent();
+
+    /**
+      Parse a string as a BOX3D.
+
+      \param s    String representation of the box.
+      \param pos  Position in the string at which to start parsing.
+                  On return set to parsing end position.
+    */
+    void parse(const std::string& s, std::string::size_type& pos);
 };
 
 /**
@@ -582,6 +617,12 @@ public:
 class PDAL_DLL Bounds
 {
 public:
+    struct error : public std::runtime_error
+    {
+        error(const std::string& err) : std::runtime_error(err)
+        {}
+    };
+
     Bounds()
     {}
 
@@ -590,7 +631,15 @@ public:
 
     BOX3D to3d() const;
     BOX2D to2d() const;
+    bool is2d() const;
     bool is3d() const;
+    bool valid() const;
+    bool empty() const;
+    void reset(const BOX3D& box);
+    void reset(const BOX2D& box);
+    void grow(double x, double y);
+    void grow(double x, double y, double z);
+    void parse(const std::string& s, std::string::size_type& pos);
 
     friend PDAL_DLL std::istream& operator >> (std::istream& in,
         Bounds& bounds);
@@ -669,7 +718,71 @@ extern PDAL_DLL std::istream& operator>>(std::istream& istr, BOX2D& bounds);
 */
 extern PDAL_DLL std::istream& operator>>(std::istream& istr, BOX3D& bounds);
 
+/**
+  Read a Bounds (2D/3D) box from a stream in a format provided by PDAL options.
+
+  \param istr  in to read from.
+  \param bounds  Bounds box to populate.
+*/
 PDAL_DLL std::istream& operator >> (std::istream& in, Bounds& bounds);
-PDAL_DLL std::ostream& operator << (std::ostream& in, const Bounds& bounds);
+
+/**
+  Write a Bounds (2D/3D) box from a string in PDAL format.
+*/
+PDAL_DLL std::ostream& operator << (std::ostream& out, const Bounds& bounds);
+
+namespace Utils
+{
+    // Catch exceptions that might be thrown by native BOX2D parsing.
+    template<>
+    inline StatusWithReason fromString(const std::string& s, BOX2D& bounds)
+    {
+        try
+        {
+            std::istringstream iss(s);
+            iss >> bounds;
+        }
+        catch (BOX2D::error& error)
+        {
+            std::string msg = "Error parsing '" + s + "': " + error.what();
+            return StatusWithReason(-1, msg);
+        }
+        return true;
+    }
+
+    // Catch exceptions that might be thrown by native BOX3D parsing.
+    template<>
+    inline StatusWithReason fromString(const std::string& s, BOX3D& bounds)
+    {
+        try
+        {
+            std::istringstream iss(s);
+            iss >> bounds;
+        }
+        catch (BOX3D::error& error)
+        {
+            std::string msg = "Error parsing '" + s + "': " + error.what();
+            return StatusWithReason(-1, msg);
+        }
+        return true;
+    }
+
+    // Catch exceptions that might be thrown by native Bounds parsing.
+    template<>
+    inline StatusWithReason fromString(const std::string& s, Bounds& bounds)
+    {
+        try
+        {
+            std::istringstream iss(s);
+            iss >> bounds;
+        }
+        catch (Bounds::error& error)
+        {
+            std::string msg = "Error parsing '" + s + "': " + error.what();
+            return StatusWithReason(-1, msg);
+        }
+        return true;
+    }
+}
 
 } // namespace pdal

@@ -36,51 +36,47 @@
 #include <pdal/Log.hpp>
 #include <pdal/PointRef.hpp>
 #include <pdal/SpatialReference.hpp>
-#include <pdal/util/Bounds.hpp>
 #include <pdal/Geometry.hpp>
-
-#include <geos_c.h>
 
 namespace pdal
 {
 
-namespace geos { class ErrorHandler; }
+class BOX2D;
+class BOX3D;
 
 class PDAL_DLL Polygon : public Geometry
 {
     using Point = std::pair<double, double>;
     using Ring = std::vector<Point>;
+    struct PrivateData;
+
 public:
-    Polygon()
-    {}
+    Polygon();
+    virtual ~Polygon();
+
     Polygon(const std::string& wkt_or_json,
-        SpatialReference ref = SpatialReference()) :
-        Geometry(wkt_or_json, ref)
-    {}
-    Polygon(const Polygon& poly) : Geometry(poly)
-    {}
-    Polygon(Polygon&& poly) : Geometry(poly)
-    {}
+        SpatialReference ref = SpatialReference());
     Polygon(const BOX2D&);
     Polygon(const BOX3D&);
-    Polygon(GEOSGeometry* g, const SpatialReference& srs) :
-        Geometry(g, srs)
-    {}
+    Polygon(OGRGeometryH g);
     Polygon(OGRGeometryH g, const SpatialReference& srs);
-    Polygon& operator=(const Polygon&);
+    Polygon(const Polygon& poly);
+    Polygon& operator=(const Polygon& src);
 
-    OGRGeometryH getOGRHandle();
-
-    Polygon simplify(double distance_tolerance, double area_tolerance) const;
-    Polygon transform(const SpatialReference& ref) const;
+    virtual void modified() override;
+    virtual void clear() override;
+    void simplify(double distance_tolerance, double area_tolerance,
+        bool preserve_topology = true);
     double area() const;
     std::vector<Polygon> polygons() const;
 
     bool covers(const PointRef& ref) const;
     bool equal(const Polygon& p) const;
-    bool covers(const Polygon& p) const;
     bool overlaps(const Polygon& p) const;
+    bool contains(double x, double y) const;
     bool contains(const Polygon& p) const;
+    bool intersects(const Polygon& p) const;
+    bool disjoint(const Polygon& p) const;
     bool touches(const Polygon& p) const;
     bool within(const Polygon& p) const;
     bool crosses(const Polygon& p) const;
@@ -88,7 +84,11 @@ public:
     std::vector<Ring> interiorRings() const;
 
 private:
-    void initializeFromBounds(const BOX3D& b);
+    void init();
+    void removeSmallRings(double tolerance);
+    void removeSmallHoles(double tolerance);
+
+    std::unique_ptr<PrivateData> m_pd;
 };
 
 } // namespace pdal

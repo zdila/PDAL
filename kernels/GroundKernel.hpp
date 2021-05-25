@@ -35,12 +35,12 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include <pdal/Kernel.hpp>
 #include <pdal/pdal_export.hpp>
 #include <pdal/util/FileUtils.hpp>
-
-#include <memory>
-#include <string>
 
 namespace pdal
 {
@@ -50,6 +50,8 @@ class Stage;
 
 class PDAL_DLL GroundKernel : public Kernel
 {
+    struct Args;
+
 public:
     std::string getName() const;
     int execute();
@@ -58,16 +60,7 @@ public:
 private:
     virtual void addSwitches(ProgramArgs& args);
 
-    std::string m_inputFile;
-    std::string m_outputFile;
-    double m_maxWindowSize;
-    double m_slope;
-    double m_maxDistance;
-    double m_initialDistance;
-    double m_cellSize;
-    bool m_extract;
-    bool m_reset;
-    bool m_denoise;
+    std::unique_ptr<Args> m_args;
 };
 
 } // namespace pdal

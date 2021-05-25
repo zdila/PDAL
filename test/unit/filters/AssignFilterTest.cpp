@@ -51,10 +51,16 @@ TEST(AssignFilterTest, value)
     r.setOptions(ro);
 
     Options fo;
+    /**
     fo.add("assignment", "X[:]=27.5");
     fo.add("assignment", "Classification[:]=0");
     fo.add("assignment", "GpsTime[:]=3000");
     fo.add("assignment", "Red[:]=255");
+    **/
+    fo.add("value", "X = 27.5");
+    fo.add("value", "Classification = 0");
+    fo.add("value", "GpsTime = 3000");
+    fo.add("value", "Red = 255");
 
     Stage& f = *(factory.createStage("filters.assign"));
     f.setInput(r);
@@ -86,8 +92,8 @@ TEST(AssignFilterTest, value)
     for (PointId i = 0; i < v->size(); ++i)
     {
         EXPECT_DOUBLE_EQ(v->getFieldAs<double>(Dimension::Id::X, i), 27.5);
-        EXPECT_EQ(v->getFieldAs<uint16_t>(
-            Dimension::Id::Classification, i), 0);
+        EXPECT_EQ(v->getFieldAs<uint8_t>(
+            Dimension::Id::Classification, i), ClassLabel::CreatedNeverClassified);
         EXPECT_DOUBLE_EQ(v->getFieldAs<double>(
             Dimension::Id::GpsTime, i), 3000.0);
         EXPECT_EQ(v->getFieldAs<int>(
@@ -109,9 +115,14 @@ TEST(AssignFilterTest, t2)
     r.setOptions(ro);
 
     Options fo;
+    /**
     fo.add("assignment", "Intensity[:250]=4");
     fo.add("assignment", "Intensity[245:270 ]=6");
     fo.add("assignment", "Intensity[272:] = 8");
+    **/
+    fo.add("value", "Intensity = 4 where Intensity <= 250");
+    fo.add("value", "Intensity = 6 where Intensity >= 245 && intensity <= 270");
+    fo.add("value", "Intensity = 8 where Intensity >= 272");
 
     f.setInput(r);
     f.setOptions(fo);
@@ -152,8 +163,11 @@ TEST(AssignFilterTest, test_condition)
     r.setOptions(ro);
 
     Options fo;
+    /**
     fo.add("condition", "Intensity[260:260]");
     fo.add("assignment", "PointSourceId[:]=6");
+    **/
+    fo.add("value", "PointSourceId = 6 where intensity == 260");
 
     f.setInput(r);
     f.setOptions(fo);

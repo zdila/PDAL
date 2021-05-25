@@ -9,11 +9,11 @@ containing waveform data (4, 5, 9 and 10).
 
 The reader also supports compressed LAS files, known as LAZ files or
 `LASzip`_ files.
-In order to use compresed LAS (LAZ), your version of PDAL must be built
+In order to use compressed LAS (LAZ), your version of PDAL must be built
 with one of the two supported decompressors, `LASzip`_ or `LAZperf`_.
 See the :ref:`compression <las_compression>` option below for more information.
 
-.. _LASzip: http://www.laszip.org
+.. _LASzip: http://laszip.org
 .. _LAZperf: https://github.com/verma/laz-perf
 
 .. note::
@@ -55,20 +55,17 @@ Example
 -------
 
 .. code-block:: json
-    :linenos:
 
-    {
-      "pipeline":[
-        {
+  [
+      {
           "type":"readers.las",
           "filename":"inputfile.las"
-        },
-        {
+      },
+      {
           "type":"writers.text",
-          "filename":"outputfile.txt",
-        }
-      ]
-    }
+          "filename":"outputfile.txt"
+      }
+  ]
 
 Options
 -------
@@ -81,9 +78,8 @@ _`filename`
 _`extra_dims`
   Extra dimensions to be read as part of each point beyond those specified by
   the LAS point format.  The format of the option is
-  <dimension_name>=<type>, ... where type is one of:
-  int8, int16, int32, int64, uint8, uint16, uint32, uint64, float, double.
-  `_t` may be added to any of the type names as well (e.g., uint32_t).
+  ``<dimension_name>=<type>[, ...]``.  Any valid PDAL :ref:`type <types>` can be
+  specified.
 
   .. note::
 
@@ -107,3 +103,15 @@ compression
   support for the decompressor being requested.  The LazPerf decompressor
   doesn't support version 1 LAZ files or version 1.4 of LAS. [Default: 'none']
 
+ignore_vlr
+  A comma-separated list of "userid/record_id" pairs specifying VLR records that should
+  not be loaded.
+
+fix_dims
+  Make invalid dimension names valid by converting disallowed characters to '_'. Only
+  applies to names specified in an extra-bytes VLR. [Default: true]
+
+nosrs
+  Don't read the SRS VLRs. The data will not be assigned an SRS. This option is
+  for use only in special cases where processing the SRS could cause performance
+  issues. [Default: false]

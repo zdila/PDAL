@@ -376,7 +376,7 @@ T value(const std::string& type, const std::string& value)
     {
         std::vector<uint8_t> encVal = Utils::base64_decode(value);
         encVal.resize(sizeof(T));
-        memcpy(&t, encVal.data(), sizeof(T));
+        t = *(reinterpret_cast<T *>(encVal.data()));
     }
     else if (!Utils::fromString(value, t))
         throw value_error();
@@ -483,6 +483,21 @@ public:
         MetadataNodeImplPtr impl = m_impl->addList(name);
         impl->setValue(value);
         impl->m_descrip = descrip;
+        return MetadataNode(impl);
+    }
+
+    MetadataNode addOrUpdate(const std::string& lname, const double& value,
+        const std::string& descrip = std::string(), size_t precision = 10)
+    {
+        if (m_impl->nodeType(lname) == MetadataType::Array)
+            throw pdal_error("Can't call addOrUpdate() on subnode list.");
+        MetadataImplList& l = m_impl->subnodes(lname);
+
+        if (l.empty())
+            return add(lname, value, descrip, precision);
+        MetadataNodeImplPtr impl(new MetadataNodeImpl(lname));
+        impl->setValue(value, precision);
+        l.front() = impl;
         return MetadataNode(impl);
     }
 

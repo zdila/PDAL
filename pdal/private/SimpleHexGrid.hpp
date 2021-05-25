@@ -88,7 +88,7 @@ namespace std
     template<>
     struct hash<::pdal::HexKey>
     {
-        static std::hash<uint64_t> hasher;
+        std::hash<uint64_t> hasher;
 
         size_t operator()(const pdal::HexKey key) const
             { return hasher(key.m_key.m_val); }

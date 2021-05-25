@@ -58,7 +58,47 @@ static StaticPluginInfo const s_info
 
 CREATE_STATIC_STAGE(BpfReader, s_info)
 
+struct BpfReader::Args
+{
+    bool m_fixNames;
+};
+
 std::string BpfReader::getName() const { return s_info.name; }
+
+BpfReader::BpfReader() : m_args(new BpfReader::Args)
+{}
+
+
+BpfReader::~BpfReader()
+{
+#ifdef PDAL_HAVE_ZLIB
+    if (m_header.m_compression)
+    {
+        for( auto& stream: m_streams )
+        {
+            delete stream->popStream();
+        }
+    }
+#endif
+}
+
+
+void BpfReader::addArgs(ProgramArgs& args)
+{
+    args.add("fix_dims", "Make invalid dimension names valid by changing "
+        "invalid characters to '_'", m_args->m_fixNames, true);
+}
+
+
+void BpfReader::addDimensions(PointLayoutPtr layout)
+{
+    for (size_t i = 0; i < m_dims.size(); ++i)
+    {
+        BpfDimension& dim = m_dims[i];
+        dim.m_id = layout->registerOrAssignDim(dim.m_label, Dimension::Type::Float);
+    }
+}
+
 
 QuickInfo BpfReader::inspect()
 {
@@ -104,6 +144,8 @@ void BpfReader::initialize()
     m_header.setLog(log());
 
     m_istreamPtr = Utils::openFile(m_filename);
+    if (!m_istreamPtr)
+        throwError("Can't open file '" + m_filename + "'.");
     m_stream = ILeStream(m_istreamPtr);
 
     // Resets the stream position in case it was already open.
@@ -113,7 +155,7 @@ void BpfReader::initialize()
     {
         if (!m_header.read(m_stream))
             return;
-        if (!m_header.readDimensions(m_stream, m_dims))
+        if (!m_header.readDimensions(m_stream, m_dims, m_args->m_fixNames))
             return;
     }
     catch (const BpfHeader::error& err)
@@ -126,21 +168,17 @@ void BpfReader::initialize()
             "Zlib support.");
 #endif
 
-    std::string code;
+    SpatialReference srs;
     if (m_header.m_coordType == static_cast<int>(BpfCoordType::Cartesian))
-       code = std::string("EPSG:4326");
+    {
+       srs.set("EPSG:4326");
+    }
     else if (m_header.m_coordType == static_cast<int>(BpfCoordType::UTM))
     {
-       uint32_t zone(abs(m_header.m_coordId));
-
-       if (m_header.m_coordId > 0 && m_header.m_coordId <= 60)
-          code = std::string("EPSG:326");
-       else if (m_header.m_coordId < 0 && m_header.m_coordId >= -60)
-          code = std::string("EPSG:327");
-       else
+       srs = SpatialReference::wgs84FromZone(m_header.m_coordId);
+       if (!srs.valid())
           throwError("BPF file contains an invalid UTM zone " +
-            Utils::toString(zone));
-       code += (zone < 10 ? "0" : "") + Utils::toString(zone);
+            Utils::toString(m_header.m_coordId));
     }
     else if (m_header.m_coordType == static_cast<int>(BpfCoordType::TCR))
     {
@@ -148,7 +186,7 @@ void BpfReader::initialize()
         // According to the 1.0 spec, the m_coordId must be 1 to be
         // valid.
         if (m_header.m_coordId == 1)
-            code = std::string("EPSG:4978");
+            srs.set("EPSG:4978");
         else
         {
             std::ostringstream oss;
@@ -169,7 +207,7 @@ void BpfReader::initialize()
        throwError(oss.str());
     }
 
-    setSpatialReference(code);
+    setSpatialReference(srs);
 
     if (m_header.m_version >= 3)
     {
@@ -191,22 +229,6 @@ void BpfReader::initialize()
         throwError("BPF Header length exceeded that reported by file.");
     m_stream.close();
     Utils::closeFile(m_istreamPtr);
-}
-
-
-void BpfReader::addDimensions(PointLayoutPtr layout)
-{
-    for (size_t i = 0; i < m_dims.size(); ++i)
-    {
-        Dimension::Type type = Dimension::Type::Float;
-
-        BpfDimension& dim = m_dims[i];
-        if (dim.m_label == "X" ||
-            dim.m_label == "Y" ||
-            dim.m_label == "Z")
-            type = Dimension::Type::Double;
-        dim.m_id = layout->registerOrAssignDim(dim.m_label, type);
-    }
 }
 
 
@@ -556,7 +578,7 @@ point_count_t BpfReader::readByteMajor(PointViewPtr data, point_count_t count)
         float f;
         uint32_t u32;
     };
-    std::unique_ptr<union uu> uArr(
+    std::unique_ptr<union uu[]> uArr(
         new uu[(std::min)(count, numPoints() - m_index)]);
 
     for (size_t d = 0; d < m_dims.size(); ++d)

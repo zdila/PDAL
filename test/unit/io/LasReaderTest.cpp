@@ -39,7 +39,9 @@
 #include <pdal/PointView.hpp>
 #include <pdal/StageFactory.hpp>
 #include <pdal/Streamable.hpp>
+#include <io/LasHeader.hpp>
 #include <io/LasReader.hpp>
+#include <pdal/util/FileUtils.hpp>
 #include "Support.hpp"
 
 using namespace pdal;
@@ -198,9 +200,13 @@ TEST(LasReaderTest, inspect)
 
     QuickInfo qi = reader.preview();
 
-    std::string testWkt = "GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433],AUTHORITY[\"EPSG\",\"4326\"]]";
+    // This string is common for WKT1 and WKT2.  When we move to WKT2
+    // completely, this can be fixed.
+    std::string testWkt {
+         R"(GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433)"
+    };
 
-    EXPECT_EQ(qi.m_srs.getWKT(), testWkt);
+    EXPECT_TRUE(Utils::startsWith(qi.m_srs.getWKT(), testWkt));
     EXPECT_EQ(qi.m_pointCount, 5380u);
 
     BOX3D bounds(-94.683465399999989, 31.0367341, 39.081000199999998,
@@ -277,7 +283,7 @@ TEST(LasReaderTest, extraBytes)
     reader.prepare(table);
 
     DimTypeList dimTypes = layout->dimTypes();
-    EXPECT_EQ(dimTypes.size(), (size_t)24);
+    EXPECT_EQ(dimTypes.size(), (size_t)22);
 
     Dimension::Id color0 = layout->findProprietaryDim("Colors0");
     EXPECT_EQ(layout->dimType(color0), Dimension::Type::Unsigned16);
@@ -326,6 +332,19 @@ TEST(LasReaderTest, extraBytes)
         ASSERT_NEAR(view->getFieldAs<double>(time, idx),
             view->getFieldAs<double>(time2, idx), 1.0);
     }
+}
+
+TEST(LasReaderTest, noextra)
+{
+    Options ro;
+    ro.add("filename", Support::datapath("las/autzen_trim.las"));
+    ro.add("extra_dims", "Foo=uint32_t");
+
+    LasReader r;
+    r.setOptions(ro);
+
+    PointTable t;
+    EXPECT_THROW(r.prepare(t), pdal_error);
 }
 
 TEST(LasReaderTest, callback)
@@ -473,7 +492,7 @@ TEST(LasReaderTest, stream)
 
 // The header of 1.2-with-color-clipped says that it has 1065 points,
 // but it really only has 1064.
-TEST(LasReaderTest, LasHeaderIncorrentPointcount)
+TEST(LasReaderTest, LasHeaderIncorrectPointcount)
 {
     PointTable table;
 
@@ -482,11 +501,7 @@ TEST(LasReaderTest, LasHeaderIncorrentPointcount)
     LasReader reader;
     reader.setOptions(readOps);
 
-    reader.prepare(table);
-    PointViewSet viewSet = reader.execute(table);
-    PointViewPtr view = *viewSet.begin();
-
-    EXPECT_EQ(1064u, view->size());
+    EXPECT_THROW(reader.prepare(table), pdal_error);
 }
 
 TEST(LasReaderTest, EmptyGeotiffVlr)
@@ -531,5 +546,91 @@ TEST(LasReaderTest, IgnoreVLRs)
         m = m.findChild("data");
         EXPECT_FALSE(!m.empty()) << "No value for node " << i;
     }
+}
 
+TEST(LasReaderTest, SyntheticPoints)
+{
+    using namespace Dimension;
+
+    PointTable table;
+
+    Options readOps;
+    readOps.add("filename", Support::datapath("las/synthetic_test.las"));
+    LasReader reader;
+    reader.setOptions(readOps);
+
+    reader.prepare(table);
+    PointViewSet viewSet = reader.execute(table);
+    PointViewPtr outView = *viewSet.begin();
+
+    EXPECT_EQ(ClassLabel::CreatedNeverClassified | ClassLabel::Synthetic, outView->getFieldAs<uint8_t>(Id::Classification, 0));
+}
+
+TEST(LasReaderTest, Start)
+{
+    // Create a LAZ file that increments XYZ
+    std::string source = Support::temppath("increment.laz");
+    StageFactory f;
+    {
+        Stage *faux = f.createStage("readers.faux");
+        Options opts;
+        opts.add("mode", "ramp");
+        opts.add("bounds", "([0, 69999],[100,70099],[500,70499])");
+        opts.add("count", 70000);
+        faux->setOptions(opts);
+
+        Stage *las = f.createStage("writers.las");
+        Options opts2;
+        opts2.add("filename", source);
+        las->setOptions(opts2);
+        las->setInput(*faux);
+
+        PointTable t;
+        las->prepare(t);
+        las->execute(t);
+    }
+
+    auto test1 = [source, &f](const std::string& compression)
+    {
+        Stage *las = f.createStage("readers.las");
+        Options opts;
+        opts.add("filename", source);
+        opts.add("start", 62520);
+        opts.add("compression", compression);
+        las->setOptions(opts);
+
+        PointTable t;
+        las->prepare(t);
+        PointViewSet s = las->execute(t);
+        PointViewPtr v = *s.begin();
+        EXPECT_EQ(v->getFieldAs<int>(Dimension::Id::X, 0), 62520);
+        EXPECT_EQ(v->getFieldAs<int>(Dimension::Id::Y, 0), 62620);
+        EXPECT_EQ(v->getFieldAs<int>(Dimension::Id::Z, 0), 63020);
+    };
+    auto test2 = [source, &f](const std::string& compression)
+    {
+        Stage *las = f.createStage("readers.las");
+        Options opts;
+        opts.add("filename", source);
+        opts.add("start", 2525);
+        opts.add("compression", compression);
+        las->setOptions(opts);
+
+        PointTable t;
+        las->prepare(t);
+        PointViewSet s = las->execute(t);
+        PointViewPtr v = *s.begin();
+        EXPECT_EQ(v->getFieldAs<int>(Dimension::Id::X, 0), 2525);
+        EXPECT_EQ(v->getFieldAs<int>(Dimension::Id::Y, 0), 2625);
+        EXPECT_EQ(v->getFieldAs<int>(Dimension::Id::Z, 0), 3025);
+    };
+    test1("laszip");
+    test2("laszip");
+#ifdef PDAL_HAVE_LAZPERF
+    test1("lazperf");
+    test2("lazperf");
+#endif
+
+    // Delete the created file.
+    FileUtils::deleteFile(source);
 }

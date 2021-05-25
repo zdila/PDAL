@@ -72,8 +72,9 @@ private:
     Format m_format;
     bool m_faces;
     StringList m_dimNames;
-    Dimension::IdList m_dims;
+    DimTypeList m_dims;
     int m_precision;
+    bool m_sizedTypes;
     Arg *m_precisionArg;
     std::vector<PointViewPtr> m_views;
 };
@@ -84,7 +85,7 @@ inline std::istream& operator>>(std::istream& in, PlyWriter::Format& f)
     std::getline(in, s);
     Utils::trim(s);
     Utils::tolower(s);
-    if (s == "ascii" || s == "default")
+    if (s == "ascii")
         f = PlyWriter::Format::Ascii;
     else if (s == "little endian" || s == "binary_little_endian")
         f = PlyWriter::Format::BinaryLe;

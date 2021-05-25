@@ -33,7 +33,7 @@ Exercise
 Command
 ................................................................................
 
-Invoke the following command, substituting accordingly, in your `OSGeo4W Shell`:
+Invoke the following command, substituting accordingly, in your |Terminal|:
 
 PDAL capability to generate rasterized output is provided by the :ref:`writers.gdal`
 stage. There is no :ref:`application <apps>` to drive this stage, and we
@@ -86,7 +86,7 @@ see what was produced. Let us use :ref:`qgis` to visualize the output.
    .. image:: ../../../images/dtm-add-raster-layer.png
         :target: ../../../../_images/dtm-add-raster-layer.png
 
-2. Add the `dtm.tif` file from your ``./PDAL/exercises/analysis/dtm``
+2. Add the `dtm.tif` file from your ``./exercises/analysis/dtm``
    directory.
 
    .. image:: ../../../images/dtm-add-raster-mean.png
@@ -121,6 +121,9 @@ see what was produced. Let us use :ref:`qgis` to visualize the output.
 
 
    .. literalinclude:: ./dtm-hillshade-command.txt
+       :linenos:
+
+   .. literalinclude:: ./dtm-hillshade-command-win.txt
        :linenos:
 
 

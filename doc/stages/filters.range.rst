@@ -3,41 +3,35 @@
 filters.range
 ======================
 
-.. contents::
-
-The range filter applies rudimentary filtering to the input point cloud
+The **Range Filter** applies rudimentary filtering to the input point cloud
 based on a set of criteria on the given dimensions.
 
 .. embed::
 
 .. streamable::
 
-Pipeline Example
-----------------
+Example
+-------
 
-This example passes through all points whose Z value is in the range [0,100]
-and whose classification equals 2 (corresponding to ground in LAS).
+This example passes through all points whose ``Z`` value is in the
+range [0,100]
+and whose ``Classification`` equals 2 (corresponding to ground in LAS).
 
 
 .. code-block:: json
 
-    {
-      "pipeline":[
-        "input.las",
-        {
+  [
+      "input.las",
+      {
           "type":"filters.range",
           "limits":"Z[0:100],Classification[2:2]"
-        },
-        {
+      },
+      {
           "type":"writers.las",
           "filename":"filtered.las"
-        }
-      ]
-    }
+      }
+  ]
 
-
-Command-line Example
---------------------
 
 The equivalent pipeline invoked via the PDAL ``translate`` command would be
 
@@ -64,6 +58,7 @@ limits
   1, 2, 6 or 7 and have a blue value or 25-75 and have a red value of
   1-50 or 75-255.  In this case, all values are inclusive.
 
+.. include:: filter_opts.rst
 
 .. _ranges:
 

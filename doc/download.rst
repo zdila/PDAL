@@ -13,26 +13,29 @@ Download
 Current Release(s)
 ------------------------------------------------------------------------------
 
-* **2018-10-12** `PDAL-1.8.0-src.tar.gz`_ `Release Notes`_ (`md5`_)
+* **2020-03-20** `PDAL-2.1.0-src.tar.gz`_ `Release Notes`_ (`md5`_)
 
-.. _`PDAL-1.8.0-src.tar.gz`: http://download.osgeo.org/pdal/PDAL-1.8.0-src.tar.gz
-.. _`Release Notes`: https://github.com/PDAL/PDAL/releases/tag/1.8.0
-.. _`md5`: http://download.osgeo.org/pdal/PDAL-1.8.0-src.tar.gz.md5
+.. _`Release Notes`: https://github.com/PDAL/PDAL/releases/tag/2.1.0
+.. _`md5`: https://github.com/PDAL/PDAL/releases/download/2.1.0/PDAL-2.1.0-src.tar.gz.md5
 
 
 Past Releases
 ------------------------------------------------------------------------------
 
+* **2019-08-23** `PDAL-2.0.1-src.tar.gz`_
+* **2019-05-09** `PDAL-1.9.1-src.tar.gz`_
+* **2019-04-09** `PDAL-1.9.0-src.tar.gz`_
+* **2018-10-12** `PDAL-1.8.0-src.tar.gz`_
 * **2018-05-13** `PDAL-1.7.2-src.tar.gz`_
 * **2018-04-06** `PDAL-1.7.1-src.tar.gz`_
-* **2018-04-05** `PDAL-1.7.0-src.tar.gz`_
-* **2017-10-12** `PDAL-1.6.0-src.tar.gz`_
 
-
+.. _`PDAL-2.1.0-src.tar.gz`: https://github.com/PDAL/PDAL/releases/download/2.1.0/PDAL-2.1.0-src.tar.gz
+.. _`PDAL-2.0.1-src.tar.gz`: https://github.com/PDAL/PDAL/releases/download/2.0.1/PDAL-2.0.1-src.tar.gz
+.. _`PDAL-1.9.1-src.tar.gz`: https://github.com/PDAL/PDAL/releases/download/1.9.1/PDAL-1.9.1-src.tar.gz
+.. _`PDAL-1.9.0-src.tar.gz`: https://github.com/PDAL/PDAL/releases/download/1.9.0/PDAL-1.9.0-src.tar.gz
+.. _`PDAL-1.8.0-src.tar.gz`: http://download.osgeo.org/pdal/PDAL-1.8.0-src.tar.gz
 .. _`PDAL-1.7.2-src.tar.gz`: http://download.osgeo.org/pdal/PDAL-1.7.2-src.tar.gz
 .. _`PDAL-1.7.1-src.tar.gz`: http://download.osgeo.org/pdal/PDAL-1.7.1-src.tar.gz
-.. _`PDAL-1.7.0-src.tar.gz`: http://download.osgeo.org/pdal/PDAL-1.7.0-src.tar.gz
-.. _`PDAL-1.6.0-src.tar.gz`: http://download.osgeo.org/pdal/PDAL-1.6.0-src.tar.gz
 
 
 .. _source:
@@ -48,7 +51,7 @@ command
 
 ::
 
-    git clone https://github.com/PDAL/PDAL.git pdal
+    git clone https://github.com/PDAL/PDAL.git
 
 
 Binaries
@@ -59,36 +62,33 @@ below is intended to provide an overview of some of the differences between the
 various distributions, as not all features can be enabled in every
 distribution. This table only summarizes the differences between distributions,
 and there are several plugins that are not built for any of the distributions.
-These include Delaunay, GeoWave, MATLAB, MBIO, MRSID, OpenSceneGraph, RDBLIB,
+These include Delaunay, MATLAB, MBIO, MRSID, OpenSceneGraph, RDBLIB,
 and RiVLib. To enable any of these plugins, the reader will need to install any
 required dependencies and build PDAL from source.
 
 .. csv-table:: PDAL Distribution Feature Comparison
-   :header: "", "Docker", "OSGeo4W", "RPMs", "Debian", "Alpine", "Conda"
-   :widths: 20, 20, 20, 20, 20, 20, 20
+   :header: "", "Docker", "RPMs", "Debian", "Alpine", ":ref:`Conda`"
+   :widths: 20, 20, 20, 20, 20, 20
 
-   "Platform(s)", "linux", "win", "linux", "linux", "linux", "win, mac, linux"
-   "CPD", "X", "", "", "", "X", ""
-   "Greyhound", "X", "X", "", "X", "X", "X"
-   "Hexbin", "X", "X", "X", "", "X", "X"
-   "Icebridge", "X", "", "X", "X", "X", "X"
-   "laszip", "X", "X", "X", "", "X", "X"
-   "laz-perf", "X", "X", "", "", "X", "X"
-   "NITF", "X", "X", "", "", "X", "X"
-   "OCI", "", "X", "", "", "", ""
-   "PCL", "", "", "X", "", "", "X"
-   "pgpointcloud", "X", "X", "X", "X", "X", "X"
-   "Python", "X", "X", "", "X", "X", "X"
-   "SQLite", "X", "X", "", "X", "X", "X"
+   "Platform(s)", "linux", "linux", "linux", "linux", "win64, mac, linux"
+   "PDAL version", "2.3", "", "", "2.2", "2.2"
+   "CPD", "", "", "", "X", ""
+   "E57", "X", "", "", "", "X"
+   "HDF", "X", "", "", "", "X"
+   "I3S", "", "", "", "", "X"
+   "Icebridge", "X",  "", "", "X", "X"
+   "NITF", "X",  "", "", "", "X (except Windows)"
+   "pgpointcloud", "X",  "", "", "X", "X"
+   "SLPK", "", "", "", "", "X"
+   "TileDB", "X", "", "", "", "X (except Windows)"
 
 
 Windows
 ................................................................................
 
-Windows builds are available via `OSGeo4W`_ (64-bit only). See the
-:ref:`workshop-osgeo4w` page for more detailed information.
+Windows builds are available via `Conda Forge`_ (64-bit only). See the
+:ref:`conda` for more detailed information.
 
-.. _`OSGeo4W`: http://trac.osgeo.org/osgeo4w/
 
 
 RPMs
@@ -123,7 +123,7 @@ building their own software that will link against PDAL.
 
 3. ``py-pdal`` will install the PDAL Python extension.
 
-Note that all of these packages reside in Alpine's ``edge/testing`` repository,
+Note that the PDAL package now resides in Alpine's ``edge/community`` repository,
 which must be added to your Alpine repositories list. Information on adding and
 updating repositories can be found in the Alpine documentation.
 
@@ -142,6 +142,9 @@ the Python extension.
 
 .. _`Alpine Linux`: https://www.alpinelinux.org/
 
+.. _`Conda Forge`: https://anaconda.org/conda-forge/pdal
+
+.. _conda:
 
 Conda
 ................................................................................
@@ -166,7 +169,7 @@ To install one or more Conda packages, use the following command.
 
     conda install [-c channel] [package...]
 
-Because the PDAL package (and it's dependencies) live in the `conda-forge`_
+Because the PDAL package (and it's dependencies) live in the `Conda Forge`_
 channel, the command to install both the PDAL application and the Python
 extension is
 
@@ -178,5 +181,3 @@ It is strongly recommended that you make use of Conda's environment management
 system and install PDAL in a separate environment (i.e., not the base
 environment). Instructions can be found on the Conda website.
 
-.. _`Conda`: https://conda.io/docs/
-.. _`conda-forge`: https://conda-forge.org/

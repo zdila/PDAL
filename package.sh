@@ -5,7 +5,7 @@
 
 if [ $# -gt 1 ]
 then
-    echo "Usage: package [RELEASE NAME]"
+    echo "Usage: package [RELEASE SUFFIX]"
     exit
 fi
 
@@ -14,7 +14,7 @@ GITSHA="$(git rev-parse HEAD)"
 echo "Cutting release for SHA $GITSHA"
 
 HERE=`pwd`
-CONTAINER="pdal/dependencies"
+CONTAINER="pdal/alpinebase"
 DOCKER="docker"
 
 CONTAINERRUN="$DOCKER run -it -d --entrypoint /bin/sh -v $HERE:/data $CONTAINER"
@@ -25,30 +25,29 @@ cat > docker-package.sh << "EOF"
 
 if [ $# -eq 1 ]
 then
-    RELNAME=$1
+    RELEASE_SUFFIX=$1
 fi
 
 git clone https://github.com/PDAL/PDAL.git;
 cd /PDAL;
 EOF
 
-
 echo "git checkout $GITSHA" >> docker-package.sh
-
 
 cat >> docker-package.sh << "EOF"
 mkdir build; cd build;
+cmake -G Ninja ..
 
-if [ -n "${RELNAME+x}" ]
+ninja dist
+chmod u+x ./bin/pdal-config
+RELEASE=$(./bin/pdal-config --version)
+echo "Suffix = $RELEASE_SUFFIX"
+if [ -n "${RELEASE_SUFFIX+x}" ]
 then
-    cmake -DPDAL_VERSION_STRING=$RELNAME ..
-else
-    cmake ..
+    RELEASE=${RELEASE}${RELEASE_SUFFIX}
 fi
-make dist
-RELNAME=$(./bin/pdal-config --version)
 
-OUTPUTDIR="/data/release-$RELNAME"
+OUTPUTDIR="/data/release-$RELEASE"
 if [ ! -e $OUTPUTDIR ]
 then
     mkdir $OUTPUTDIR
@@ -59,6 +58,14 @@ for ext in $extensions
 do
     for filename in $(ls *$ext)
     do
+        if [ -n "${RELEASE_SUFFIX+x}" ]
+        then
+            root=${filename%-*}
+            ext=${filename##*-}
+            outname=$root$RELEASE_SUFFIX-$ext
+            mv $filename $outname
+            filename=$outname
+        fi
         `md5sum $filename > $filename.md5`
         `sha256sum $filename > $filename.sha256sum`
         `sha512sum $filename > $filename.sha512sum`

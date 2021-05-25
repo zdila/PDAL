@@ -238,21 +238,25 @@ MetadataNode InfoKernel::run(const std::string& filename)
     {
         makePipeline();
         if (m_needPoints || m_showMetadata)
-        {
-            if (m_manager.pipelineStreamable())
-            {
-                FixedPointTable fixedTable(10000);
-                m_manager.executeStream(fixedTable);
-            }
-            else
-                m_manager.execute();
-        }
+            m_manager.execute(ExecMode::PreferStream);
         else
             m_manager.prepare();
         dump(root);
     }
     root.add("filename", filename);
     root.add("pdal_version", Config::fullVersionString());
+
+    std::time_t now
+    = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::stringstream t;
+    t << std::put_time( std::localtime( &now ), "%FT%T%z" );
+    root.add("reader", m_reader->getName());
+    root.add("now", t.str());
+    
+    uintmax_t size = Utils::fileSize(filename);
+    if (size)
+        root.add("file_size", size);
+    
     return root;
 }
 

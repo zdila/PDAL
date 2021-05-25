@@ -34,8 +34,9 @@
 
 #include <array>
 #include <sstream>
-#include <json/json.h>
+#include <nlohmann/json.hpp>
 #include <pdal/util/ProgramArgs.hpp>
+#include <pdal/PDALUtils.hpp>
 #include "RdbReader.hpp"
 
 namespace pdal
@@ -84,6 +85,10 @@ std::string RdbReader::getName() const
 QuickInfo RdbReader::inspect()
 {
     using namespace riegl::rdb::pointcloud;
+
+    if (pdal::Utils::isRemote(m_filename))
+        m_filename = pdal::Utils::fetchRemote(m_filename);
+
     RdbPointcloud reader(m_filename, m_filter, m_extras);
     riegl::rdb::Pointcloud& rdb = reader.pointcloud();
     {
@@ -143,6 +148,9 @@ void RdbReader::addArgs(ProgramArgs& args)
 
 void RdbReader::initialize()
 {
+    if (pdal::Utils::isRemote(m_filename))
+        m_filename = pdal::Utils::fetchRemote(m_filename);
+
     m_pointcloud.reset(new RdbPointcloud(m_filename, m_filter, m_extras));
     // Set spatial reference form source if not overridden.
     if (getSpatialReference().empty())
@@ -185,39 +193,45 @@ void RdbReader::readMetadata(RdbPointcloud &reader, MetadataNode root)
             const std::string& value
         )
         {
-            Json::Value  node;
-            Json::Reader reader;
-            if (reader.parse(value, node))
-                 add(parent, name, node);
-            else parent.add(name, value);
+            try
+            {
+                NL::json node = NL::json::parse(value);
+                add(parent, name, node);
+            }
+            catch (const NL::json::parse_error&)
+            {
+                parent.add(name, value);
+            }
         }
 
         static void add(
             MetadataNode&      parent,
             const std::string& name,
-            const Json::Value& node
+            const NL::json& node
         )
         {
-            if      (node.isNull())   { parent.add(name, ""); }
-            else if (node.isBool())   { parent.add(name, node.asBool()); }
-            else if (node.isInt())    { parent.add(name, node.asInt64()); }
-            else if (node.isUInt())   { parent.add(name, node.asUInt64()); }
-            else if (node.isDouble()) { parent.add(name, node.asDouble()); }
-            else if (node.isString()) { parent.add(name, node.asString()); }
-            else if (node.isObject())
+            if (node.is_null())
+                parent.add(name, "");
+            else if (node.is_boolean())
+                parent.add(name, node.get<bool>());
+            else if (node.is_number_unsigned())
+                parent.add(name, node.get<uint64_t>());
+            else if (node.is_number_integer())
+                parent.add(name, node.get<int64_t>());
+            else if (node.is_number_float())
+                parent.add(name, node.get<double>());
+            else if (node.is_string())
+                parent.add(name, node.get<std::string>());
+            else if (node.is_object())
             {
                 MetadataNode object = parent.add(name);
-                for (const std::string& name: node.getMemberNames())
-                {
-                    add(object, name, node[name]);
-                }
+                for (auto it : node.items())
+                    add(object, it.key(), it.value());
             }
-            else if (node.isArray())
+            else if (node.is_array())
             {
-                for (const Json::Value& item: node)
-                {
-                    add(parent, name, item);
-                }
+                for (size_t i = 0; i < node.size(); ++i)
+                    add(parent, name, node.at(i));
             }
         }
     };

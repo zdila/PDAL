@@ -117,11 +117,13 @@ void BpfWriter::initialize()
 
         size_t size = FileUtils::fileSize(file);
         if (size > (std::numeric_limits<uint32_t>::max)())
-            throwError("Bundledfile '" + file + "' too large.");
+            throwError("Bundled file '" + file + "' too large.");
+        if (size == 0)
+            throwError("Bundled file '" + file + "' empty or otherwise invalid.");
 
         BpfUlemFile ulemFile(size, FileUtils::getFilename(file), file);
         if (ulemFile.m_filename.length() > 32)
-            throwError("Bundledfile '" + file + "' name exceeds "
+            throwError("Bundled file '" + file + "' name exceeds "
                 "maximum length of 32.");
         m_bundledFiles.push_back(ulemFile);
     }
@@ -262,7 +264,7 @@ void BpfWriter::writeView(const PointViewPtr dataShared)
     }
 
     size_t count = data->size() + m_header.m_numPts;
-    if (count > (std::numeric_limits<int32_t>::max)())
+    if (count > (size_t)(std::numeric_limits<int32_t>::max)())
         throwError("Too many points to write to BPF output. Limit is 2^32 -1.");
     m_header.m_numPts = static_cast<int32_t>(count);
 }
