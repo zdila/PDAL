@@ -81,7 +81,7 @@ public:
     void dumpInfo();
     void drawHexagons();
     Hexagon *getHexagon(HexKey key);
-    void addDenseHexagon(HexKey key);
+    PDAL_DLL void addDenseHexagon(HexKey key);
     HexIter hexBegin();
     HexIter hexEnd();
     int denseLimit() const
