@@ -59,7 +59,7 @@ class HexGrid : public SimpleHexGrid
     friend class HexIter;
 
 public:
-    HexGrid(int dense_limit);
+    PDAL_DLL HexGrid(int dense_limit);
     HexGrid(double height, int dense_limit);
     ~HexGrid()
     {
@@ -67,9 +67,9 @@ public:
             delete m_paths[i];
     }
 
-    void findShapes();
-    void findParentPaths();
-    void toWKT(std::ostream&) const;
+    PDAL_DLL void findShapes();
+    PDAL_DLL void findParentPaths();
+    PDAL_DLL void toWKT(std::ostream&) const;
 
     bool dense(Hexagon *h);
     void addPoint(double x, double y)
