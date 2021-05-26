@@ -42,14 +42,10 @@ using namespace std;
 namespace pdal
 {
 
-SimpleHexGrid::SimpleHexGrid() : m_height(-1.0), m_width(-1.0),
-    m_origin(std::numeric_limits<double>::max(),
-        std::numeric_limits<double>::max())
+SimpleHexGrid::SimpleHexGrid() : m_height(-1.0), m_width(-1.0), m_origin(0, 0), m_first(true)
 {}
 
-SimpleHexGrid::SimpleHexGrid(double height) : 
-    m_origin(std::numeric_limits<double>::max(),
-        std::numeric_limits<double>::max())
+SimpleHexGrid::SimpleHexGrid(double height) : m_origin(0, 0), m_first(true)
 {
     initialize(height);
 }
@@ -108,8 +104,9 @@ HexKey SimpleHexGrid::findHexagon(Point p)
 {
     int x, y;
 
-    if (m_origin.m_x == std::numeric_limits<double>::max())
+    if (m_first)
     {
+        m_first = false;
         m_origin = p;
         return HexKey(0, 0);
     }

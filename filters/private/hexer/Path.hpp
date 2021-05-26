@@ -36,8 +36,6 @@
 #include <vector>
 #include <ostream>
 
-#include <pdal/private/Mathpair.hpp>
-
 #include "Segment.hpp"
 
 namespace pdal

@@ -179,7 +179,7 @@ Hexagon *HexGrid::findHexagon(Point p)
 Hexagon *HexGrid::getHexagon(HexKey key)
 {
     // Stick a hexagon into the map if necessary.
-    HexMap::value_type hexpair(key, Hexagon(key.x(), key.y()));
+    HexMap::value_type hexpair(key, Hexagon(key));
     std::pair<HexMap::iterator,bool> retval;
     retval = m_hexes.insert(hexpair);
     HexMap::iterator it = retval.first;

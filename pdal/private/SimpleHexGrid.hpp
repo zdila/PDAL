@@ -131,6 +131,8 @@ private:
     double m_width;
     /// Origin of the hex grid in point coordinates.
     Point m_origin;
+    /// First query done.
+    bool m_first;
     /// Offsets of vertices of hexagon, going anti-clockwise from upper-left
     Point m_offsets[6];
     /// Offset of the center of the hexagons.

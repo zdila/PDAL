@@ -50,6 +50,9 @@ public:
         m_dense_neighbors(0)
         {}
 
+    Hexagon(HexKey key) : Hexagon(key.x(), key.y())
+    {}
+
     void increment()
        { m_count++; }
 

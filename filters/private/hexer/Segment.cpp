@@ -133,9 +133,7 @@ Point Segment::pos(HexGrid *grid, const Point& offset) const
     pos.m_x = m_hex->x() * grid->width();
     pos.m_y = m_hex->y() * grid->height();
     if (m_hex->xodd())
-    {
         pos.m_y += (grid->height() / 2);
-    }
     return pos + offset + grid->origin();
 }
 
