@@ -68,7 +68,7 @@ public:
     // issue. Downstream handling may depend on this being the actual number of points
     // in the tile, rather than the number that were *supposed to be* in the tile.
     point_count_t size() const
-        { return m_overlap.m_count; }
+        { return m_numPoints; }
     const std::string& error() const
         { return m_error; }
     BasePointTable *addonTable(Dimension::Id id) const
@@ -76,6 +76,7 @@ public:
     void read();
 
 private:
+    uint64_t m_numPoints = 0;
     Overlap m_overlap;
     const EptInfo& m_info;
     const Connector& m_connector;

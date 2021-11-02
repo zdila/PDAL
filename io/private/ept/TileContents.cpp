@@ -93,7 +93,9 @@ void TileContents::readLaszip()
     reader.setOptions(options);
 
     reader.prepare(*m_table);
-    reader.execute(*m_table);
+    const auto views = reader.execute(*m_table);
+    for (const auto& v : views)
+        m_numPoints += v->size();
 }
 
 void TileContents::readBinary()
