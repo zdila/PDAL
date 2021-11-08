@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (c) 2018, Connor Manning (connor@hobu.co)
+ * Copyright (c) 2021, Hobu Inc. (info@hobu.co)
  *
  * All rights reserved.
  *
@@ -38,13 +38,14 @@
 
 #include <pdal/pdal_test_main.hpp>
 
-#include <io/EptReader.hpp>
+#include <io/CopcReader.hpp>
 #include <io/LasReader.hpp>
 #include <filters/CropFilter.hpp>
 #include <filters/ReprojectionFilter.hpp>
+#include <filters/SortFilter.hpp>
 #include <pdal/SrsBounds.hpp>
 #include <pdal/util/FileUtils.hpp>
-#include <pdal/private/gdal/GDALUtils.hpp>
+//#include <pdal/private/gdal/GDALUtils.hpp>
 
 #include "Support.hpp"
 
@@ -53,9 +54,18 @@ namespace pdal
 
 namespace
 {
+    const std::string copcPath(Support::datapath("copc/lone-star.copc.laz"));
+    const std::string copcAutzenPath(Support::datapath("copc/1.2-with-color.copc.laz"));
+    const BOX3D pointBounds(515368.60225, 4918340.364, 2322.89625,
+        515401.043, 4918381.12375, 2338.5755);
+    const point_count_t numPoints(518862);
+}
+
+/**
+namespace
+{
     const BOX3D expBoundsConforming(515368, 4918340, 2322,
             515402, 4918382, 2339);
-    const std::string expSrsWkt = R"(PROJCS["NAD83 / UTM zone 12N",GEOGCS["NAD83",DATUM["North_American_Datum_1983",SPHEROID["GRS 1980",6378137,298.257222101,AUTHORITY["EPSG","7019"]],TOWGS84[0,0,0,0,0,0,0],AUTHORITY["EPSG","6269"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4269"]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",-111],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["meter",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","26912"]])";
     const point_count_t expNumPoints(518862);
     const std::vector<std::string> expDimNames = {
          "X", "Y", "Z", "Intensity", "ReturnNumber", "NumberOfReturns",
@@ -67,8 +77,6 @@ namespace
     // a 4-tile split of Lone Star Geyser.
     const std::string sourceFilePath(
             Support::datapath("ept/source/lone-star.laz"));
-    const std::string eptLaszipPath(
-            Support::datapath("ept/lone-star-laszip/ept.json"));
     const std::string eptAutzenPath(
             Support::datapath("ept/1.2-with-color/ept.json"));
     const std::string attributesPath(
@@ -105,47 +113,53 @@ TEST(EptReaderTest, protocol)
     }
     EXPECT_TRUE(gotEx);
 }
+**/
 
-TEST(EptReaderTest, inspect)
+TEST(CopcReaderTest, inspect)
 {
-    Options options;
-    options.add("filename", eptLaszipPath);
+    const std::vector<std::string> dimNames = {
+         "ClassFlags", "Classification", "EdgeOfFlightLine", "GpsTime", "Intensity",
+         "NumberOfReturns", "PointSourceId", "ReturnNumber", "ScanAngleRank", "ScanChannel",
+         "ScanDirectionFlag", "UserData", "X", "Y", "Z"
+    };
 
-    EptReader reader;
+    Options options;
+    options.add("filename", copcPath);
+
+    CopcReader reader;
     reader.setOptions(options);
 
     const QuickInfo qi(reader.preview());
 
     EXPECT_TRUE(qi.valid());
-    EXPECT_EQ(qi.m_bounds, expBoundsConforming);
-    EXPECT_EQ(qi.m_pointCount, expNumPoints);
-    std::vector<std::string> dimNamesA(expDimNames);
-    std::vector<std::string> dimNamesB(qi.m_dimNames);
-    std::sort(dimNamesA.begin(), dimNamesA.end());
-    std::sort(dimNamesB.begin(), dimNamesB.end());
-    EXPECT_TRUE(std::equal(dimNamesA.cbegin(), dimNamesA.cend(),
-        dimNamesB.cbegin()));
+    EXPECT_EQ(qi.m_bounds, pointBounds);
+    EXPECT_EQ(qi.m_pointCount, numPoints);
+    StringList d(qi.m_dimNames.begin(), qi.m_dimNames.end());
+    std::sort(d.begin(), d.end());
+    EXPECT_TRUE(std::equal(d.cbegin(), d.cend(), dimNames.cbegin()));
 
-    std::string wkt = qi.m_srs.getWKT();
+    std::string srs = qi.m_srs.getWKT();
     // Sometimes we get back "metre" when we're execting "meter".
     while (true)
     {
-        auto pos = wkt.find("metre");
+        auto pos = srs.find("metre");
         if (pos == std::string::npos)
             break;
-        wkt.replace(pos, 5, "meter");
+        srs.replace(pos, 5, "meter");
     }
-    EXPECT_EQ(wkt, expSrsWkt);
+
+    const std::string wkt = R"(GEOCCS["unnamed",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],UNIT["meter",1],AXIS["Geocentric X",OTHER],AXIS["Geocentric Y",OTHER],AXIS["Geocentric Z",NORTH]])";
+    EXPECT_EQ(wkt, srs);
 }
 
-TEST(EptReaderTest, fullReadLaszip)
+TEST(CopcReaderTest, fullRead)
 {
     Options options;
-    options.add("filename", eptLaszipPath);
+    options.add("filename", copcPath);
 
     PointTable table;
 
-    EptReader reader;
+    CopcReader reader;
     reader.setOptions(options);
     reader.prepare(table);
     const auto set(reader.execute(table));
@@ -163,106 +177,36 @@ TEST(EptReaderTest, fullReadLaszip)
             y = view->getFieldAs<double>(Dimension::Id::Y, i);
             z = view->getFieldAs<double>(Dimension::Id::Z, i);
             o = view->getFieldAs<uint64_t>(Dimension::Id::OriginId, i);
-            ASSERT_TRUE(expBoundsConforming.contains(x, y, z));
+            ASSERT_TRUE(pointBounds.contains(x, y, z));
             ASSERT_TRUE(o < 4);
         }
     }
 
-    EXPECT_EQ(np, expNumPoints);
+    EXPECT_EQ(np, numPoints);
 }
 
-TEST(EptReaderTest, fullReadBinary)
+TEST(CopcReaderTest, resolutionLimit)
 {
     Options options;
-    options.add("filename", ellipsoidEptBinaryPath);
+    options.add("filename", copcPath);
 
-    PointTable table;
-
-    EptReader reader;
-    reader.setOptions(options);
-    reader.prepare(table);
-    const auto set(reader.execute(table));
-
-    double x, y, z;
-    uint64_t o;
-    uint64_t np(0);
-    for (const PointViewPtr& view : set)
-    {
-        for (point_count_t i(0); i < view->size(); ++i)
-        {
-            ++np;
-
-            x = view->getFieldAs<double>(Dimension::Id::X, i);
-            y = view->getFieldAs<double>(Dimension::Id::Y, i);
-            z = view->getFieldAs<double>(Dimension::Id::Z, i);
-            o = view->getFieldAs<uint64_t>(Dimension::Id::OriginId, i);
-            ASSERT_TRUE(ellipsoidBoundsConforming.contains(x, y, z));
-            ASSERT_EQ(o, 0u);
-        }
-    }
-
-    EXPECT_EQ(np, ellipsoidNumPoints);
-}
-
-TEST(EptReaderTest, fullReadZstandard)
-{
-#ifdef PDAL_HAVE_ZSTD
-    Options options;
-    options.add("filename", ellipsoidEptZstandardPath);
-
-    PointTable table;
-
-    EptReader reader;
-    reader.setOptions(options);
-    reader.prepare(table);
-    const auto set(reader.execute(table));
-
-    double x, y, z;
-    uint64_t o;
-    uint64_t np(0);
-    for (const PointViewPtr& view : set)
-    {
-        for (point_count_t i(0); i < view->size(); ++i)
-        {
-            ++np;
-
-            x = view->getFieldAs<double>(Dimension::Id::X, i);
-            y = view->getFieldAs<double>(Dimension::Id::Y, i);
-            z = view->getFieldAs<double>(Dimension::Id::Z, i);
-            o = view->getFieldAs<uint64_t>(Dimension::Id::OriginId, i);
-            ASSERT_TRUE(ellipsoidBoundsConforming.contains(x, y, z));
-            ASSERT_EQ(o, 0u);
-        }
-    }
-
-    EXPECT_EQ(np, ellipsoidNumPoints);
-#endif
-}
-
-TEST(EptReaderTest, resolutionLimit)
-{
-    Options options;
-    options.add("filename", eptLaszipPath);
-
-    // Our test data cube is 44 units in length, with a span of 128.  Therefore
-    // our resolution cell width values for the first few depths are:
-    //      Depth 0: 0.34375
-    //      Depth 1: 0.171875
-    //      Depth 2: 0.0859375
+    // Resolution for the first 
+    //      Depth 0: 0.31846
+    //      Depth 1: 0.15923
+    //      Depth 2: 0.079615
     //
-    // Any resolution option between 0.171875 and 0.0859375 will select all of
-    // depths 0, 1, and 2, so we'll test a corresponding query.
-    options.add("resolution", 0.1);
+    // Any resolution option between 0.31846 and 0.15923 will select depths 0 and 1,
+    // so we'll test a corresponding query.
+    options.add("resolution", 0.2);
 
     // This expected value corresponds to the sum of the point counts of all
-    // files in our dataset whose depth is less than 3.  This value is summed
-    // from the hierarchy for depths 0 through 2 (our test dataset has depths
-    // through 3, which are omitted here).
-    const point_count_t expectedCount = 479269;
+    // files in our dataset whose depth is less than 2.  This value is summed
+    // from the hierarchy for depths 0 through 1.
+    const point_count_t expectedCount = 163993;
 
     PointTable table;
 
-    EptReader reader;
+    CopcReader reader;
     reader.setOptions(options);
     reader.prepare(table);
     const auto set(reader.execute(table));
@@ -280,7 +224,7 @@ TEST(EptReaderTest, resolutionLimit)
             y = view->getFieldAs<double>(Dimension::Id::Y, i);
             z = view->getFieldAs<double>(Dimension::Id::Z, i);
             o = view->getFieldAs<uint64_t>(Dimension::Id::OriginId, i);
-            ASSERT_TRUE(expBoundsConforming.contains(x, y, z));
+            ASSERT_TRUE(pointBounds.contains(x, y, z));
             ASSERT_TRUE(o < 4);
         }
     }
@@ -289,21 +233,21 @@ TEST(EptReaderTest, resolutionLimit)
 }
 
 
-TEST(EptReaderTest, boundedRead2d)
+TEST(CopcReaderTest, boundedRead2d)
 {
     BOX2D bounds(515380, 4918350, 515400, 4918370);
 
     // First we'll query the EptReader for these bounds.
-    EptReader reader;
+    CopcReader reader;
     {
         Options options;
-        options.add("filename", eptLaszipPath);
+        options.add("filename", copcPath);
         options.add("bounds", bounds);
         reader.setOptions(options);
     }
-    PointTable eptTable;
-    reader.prepare(eptTable);
-    const auto set(reader.execute(eptTable));
+    PointTable copcTable;
+    reader.prepare(copcTable);
+    const auto set(reader.execute(copcTable));
 
     double x, y, z;
     uint64_t o;
@@ -328,7 +272,7 @@ TEST(EptReaderTest, boundedRead2d)
     LasReader source;
     {
         Options options;
-        options.add("filename", sourceFilePath);
+        options.add("filename", copcPath);
         source.setOptions(options);
     }
     CropFilter crop;
@@ -340,31 +284,29 @@ TEST(EptReaderTest, boundedRead2d)
     }
     PointTable sourceTable;
     crop.prepare(sourceTable);
-    uint64_t sourceNp(0);
-    for (const PointViewPtr& view : crop.execute(sourceTable))
-    {
-        sourceNp += view->size();
-    }
+    PointViewSet s = crop.execute(sourceTable);
+    EXPECT_EQ(s.size(), 1u);
+    PointViewPtr v = *s.begin();
 
-    EXPECT_EQ(np, sourceNp);
+    EXPECT_EQ(np, v->size());
     EXPECT_EQ(np, 354211u);
 }
 
-TEST(EptReaderTest, boundedRead3d)
+TEST(CopcReaderTest, boundedRead3d)
 {
     BOX3D bounds(515380, 4918350, 2320, 515400, 4918370, 2325);
 
     // First we'll query the EptReader for these bounds.
-    EptReader reader;
+    CopcReader reader;
     {
         Options options;
-        options.add("filename", eptLaszipPath);
+        options.add("filename", copcPath);
         options.add("bounds", bounds);
         reader.setOptions(options);
     }
-    PointTable eptTable;
-    reader.prepare(eptTable);
-    const auto set(reader.execute(eptTable));
+    PointTable copcTable;
+    reader.prepare(copcTable);
+    const auto set(reader.execute(copcTable));
 
     double x, y, z;
     uint64_t o;
@@ -389,7 +331,7 @@ TEST(EptReaderTest, boundedRead3d)
     LasReader source;
     {
         Options options;
-        options.add("filename", sourceFilePath);
+        options.add("filename", copcPath);
         source.setOptions(options);
     }
     CropFilter crop;
@@ -419,65 +361,19 @@ TEST(EptReaderTest, boundedRead3d)
     EXPECT_EQ(np, 45930u);
 }
 
-TEST(EptReaderTest, originRead)
-{
-    uint64_t np(0);
-    for (uint64_t origin(0); origin < 4; ++origin)
-    {
-        EptReader reader;
-        Options options;
-        options.add("filename", eptLaszipPath);
-        options.add("origin", origin);
-        reader.setOptions(options);
-        PointTable table;
-        reader.prepare(table);
-        const auto set(reader.execute(table));
-
-        uint64_t o;
-        for (const PointViewPtr& view : set)
-        {
-            np += view->size();
-            for (point_count_t i(0); i < view->size(); ++i)
-            {
-                o = view->getFieldAs<uint64_t>(Dimension::Id::OriginId, i);
-                ASSERT_EQ(o, origin);
-            }
-        }
-    }
-
-    EXPECT_EQ(np, expNumPoints);
-}
-
-TEST(EptReaderTest, badOriginQuery)
-{
-    EptReader reader;
-    Options options;
-    options.add("filename", eptLaszipPath);
-    options.add("origin", 4);
-    reader.setOptions(options);
-    PointTable table;
-    EXPECT_THROW(reader.prepare(table), pdal_error);
-}
-
-void streamTest(const std::string src)
+TEST(CopcReaderTest, stream)
 {
     Options ops;
-    ops.add("filename", src);
+    ops.add("filename", copcPath);
     ops.add("resolution", 1);
 
     // Execute the reader in normal non-streaming mode.
-    EptReader normalReader;
+    CopcReader normalReader;
     normalReader.setOptions(ops);
     PointTable normalTable;
-    const auto nodeIdDim = normalTable.layout()->registerOrAssignDim(
-        "EptNodeId",
-        Dimension::Type::Unsigned32);
-    const auto pointIdDim = normalTable.layout()->registerOrAssignDim(
-        "EptPointId",
-        Dimension::Type::Unsigned32);
     normalReader.prepare(normalTable);
-    const auto views = normalReader.execute(normalTable);
-    PointView& normalView = **views.begin();
+    PointViewSet s = normalReader.execute(normalTable);
+    PointView& normalView = *(*s.begin());
 
     // A table that satisfies the streaming interface and simply adds the data
     // to a normal PointView.  We'll compare the result with the PointView
@@ -506,21 +402,12 @@ void streamTest(const std::string src)
     };
 
     // Execute the reder in streaming mode.
-    EptReader streamReader;
+    CopcReader streamReader;
     streamReader.setOptions(ops);
     std::vector<char> streamBuffer;
     PointTable streamTable;
     PointView streamView(streamTable);
     TestPointTable testTable(streamView);
-    const auto streamNodeIdDim = streamTable.layout()->registerOrAssignDim(
-        "EptNodeId",
-        Dimension::Type::Unsigned32);
-    const auto streamPointIdDim = streamTable.layout()->registerOrAssignDim(
-        "EptPointId",
-        Dimension::Type::Unsigned32);
-
-    ASSERT_EQ(streamNodeIdDim, nodeIdDim);
-    ASSERT_EQ(streamPointIdDim, pointIdDim);
 
     streamReader.prepare(testTable);
     streamReader.execute(testTable);
@@ -536,15 +423,11 @@ void streamTest(const std::string src)
     const std::size_t numPoints(normalView.size());
     const std::size_t pointSize(normalTable.layout()->pointSize());
 
-    const auto sort([nodeIdDim, pointIdDim]
-        (const PointRef& a, const PointRef& b)
+    const auto cmp = [](const PointRef& a, const PointRef& b)
     {
-        if (a.compare(nodeIdDim, b)) return true;
-        return !b.compare(nodeIdDim, a) && a.compare(pointIdDim, b);
-    });
-    std::stable_sort(normalView.begin(), normalView.end(), sort);
-
-    std::stable_sort(streamView.begin(), streamView.end(), sort);
+        return (a.compare(Dimension::Id::GpsTime, b));
+    };
+    std::sort(normalView.begin(), normalView.end(), cmp);
 
     for (PointId i(0); i < normalView.size(); ++i)
     {
@@ -557,48 +440,25 @@ void streamTest(const std::string src)
     }
 }
 
-TEST(EptReaderTest, binaryStream)
-{
-    streamTest(ellipsoidEptBinaryPath);
-}
-
-TEST(EptReaderTest, laszipStream)
-{
-#ifdef PDAL_HAVE_LASZIP
-    streamTest(eptLaszipPath);
-#endif
-}
-
-TEST(EptReaderTest, zstandardStream)
-{
-#ifdef PDAL_HAVE_ZSTANDARD
-    streamTest(ellipsoidEptZstandardPath);
-#endif
-}
-
 TEST(EptReaderTest, boundedCrop)
 {
     std::string wkt = FileUtils::readFileIntoString(
         Support::datapath("autzen/autzen-selection.wkt"));
 
     // First we'll query the EptReader for these bounds.
-    EptReader reader;
+    CopcReader reader;
     {
         Options options;
-        options.add("filename", eptAutzenPath);
+        options.add("filename", copcAutzenPath);
         Option polygon("polygon", wkt + "/ EPSG:3644");
         options.add(polygon);
         reader.setOptions(options);
     }
 
-    PointTable eptTable;
-    reader.prepare(eptTable);
-
-    uint64_t eptNp(0);
-    for (const PointViewPtr& view : reader.execute(eptTable))
-    {
-        eptNp += view->size();
-    }
+    PointTable copcTable;
+    reader.prepare(copcTable);
+    PointViewSet s = reader.execute(copcTable);
+    PointViewPtr v = *s.begin();
 
     // Now we'll check the result against a crop filter of the source file with
     // the same bounds.
@@ -618,31 +478,15 @@ TEST(EptReaderTest, boundedCrop)
     }
     PointTable sourceTable;
     crop.prepare(sourceTable);
-    uint64_t sourceNp(0);
-    for (const PointViewPtr& view : crop.execute(sourceTable))
-    {
-        sourceNp += view->size();
-    }
+    PointViewSet s2 = crop.execute(sourceTable);
+    PointViewPtr v2 = *s2.begin();
 
-    EXPECT_EQ(eptNp, sourceNp);
-
-//ABELL - A change in proj changed the numbers, but we don't necessarily have proj.h
-/**
-#if defined(PROJ_VERSION_NUMBER) && PROJ_VERSION_NUMBER > 80101
-    EXPECT_EQ(eptNp, 45u);
-    EXPECT_EQ(sourceNp, 45u);
-#else
-    EXPECT_EQ(eptNp, 47u);
-    EXPECT_EQ(sourceNp, 47u);
-#endif
-**/
-    EXPECT_GE(eptNp, 45u);
-    EXPECT_GE(sourceNp, 45u);
-    EXPECT_LE(eptNp, 47u);
-    EXPECT_LE(sourceNp, 47u);
+    EXPECT_EQ(v->size(), v2->size());
+    EXPECT_EQ(v->size(), 47u);
+    EXPECT_EQ(v2->size(), 47u);
 }
 
-TEST(EptReaderTest, polygonAndBoundsCrop)
+TEST(CopcReaderTest, polygonAndBoundsCrop)
 {
     std::string wkt = FileUtils::readFileIntoString(
         Support::datapath("autzen/autzen-selection.wkt"));
@@ -651,44 +495,44 @@ TEST(EptReaderTest, polygonAndBoundsCrop)
     // eastmost 25% of the bounds omitted.  So this should shrink our query
     // results from the "boundedCrop" test above since we are further limiting
     // our spatial selection.
-    std::string boxstring = "([636577.1, 637297.4225], [850571.42, 851489.34])";
+    std::string boxstring = "([636577.1, 637297.4225], [850571.42, 851489.35])";
     BOX2D box;
     Utils::fromString(boxstring, box);
 
-    // First we'll query the EptReader for these bounds.
-    EptReader reader;
+    // First we'll query the CopcReader for these bounds.
+    CopcReader reader;
     {
         Options options;
-        options.add("filename", eptAutzenPath);
-        Option polygon("polygon", wkt + "/ EPSG:3644");
-        options.add(polygon);
-        Option bounds("bounds", boxstring);
-        options.add(bounds);
+        options.add("filename", copcAutzenPath);
+        options.add("polygon", wkt + "/ EPSG:3644");
+        options.add("bounds", boxstring);
         reader.setOptions(options);
     }
-
-    PointTable eptTable;
-    reader.prepare(eptTable);
-
-    uint64_t eptNp(0);
-    for (const PointViewPtr& view : reader.execute(eptTable))
+    SortFilter sortCopc;
     {
-        eptNp += view->size();
+        Options options;
+        options.add("dimension", "GpsTime");
+        sortCopc.setOptions(options);
+        sortCopc.setInput(reader);
     }
+
+    PointTable copcTable;
+    sortCopc.prepare(copcTable);
+    PointViewSet s = sortCopc.execute(copcTable);
+    PointViewPtr v = *s.begin();
 
     // Now we'll check the result against a crop filter of the source file with
     // the same bounds.
     LasReader source;
     {
         Options options;
-        options.add("filename", Support::datapath("las/1.2-with-color.las"));
+        options.add("filename", copcAutzenPath);
         source.setOptions(options);
     }
     CropFilter boundsCrop;
     {
         Options options;
-        Option bounds("bounds", boxstring);
-        options.add(bounds);
+        options.add("bounds", boxstring);
         boundsCrop.setOptions(options);
         boundsCrop.setInput(source);
     }
@@ -700,29 +544,18 @@ TEST(EptReaderTest, polygonAndBoundsCrop)
         polygonCrop.setOptions(options);
         polygonCrop.setInput(boundsCrop);
     }
+
     PointTable sourceTable;
     polygonCrop.prepare(sourceTable);
-    uint64_t sourceNp(0);
+    PointViewSet s2 = polygonCrop.execute(sourceTable);
+    PointViewPtr v2 = *s2.begin();
 
-    BOX2D got;
-    for (const PointViewPtr& view : polygonCrop.execute(sourceTable))
-    {
-        sourceNp += view->size();
-        for (std::size_t i = 0; i < view->size(); ++i) {
-            EXPECT_TRUE(
-                box.contains(
-                    view->getFieldAs<double>(pdal::Dimension::Id::X, i),
-                    view->getFieldAs<double>(pdal::Dimension::Id::Y, i)));
-        }
-    }
-
-    EXPECT_EQ(eptNp, sourceNp);
-    EXPECT_EQ(eptNp, 38u);
-    EXPECT_EQ(sourceNp, 38u);
+    EXPECT_EQ(v->size(), v2->size());
+    EXPECT_EQ(v->size(), 38u);
 }
 
 
-TEST(EptReaderTest, boundedCropReprojection)
+TEST(CopcReaderTest, boundedCropReprojection)
 {
     std::string selection = FileUtils::readFileIntoString(
         Support::datapath("autzen/autzen-selection.wkt"));
@@ -731,29 +564,26 @@ TEST(EptReaderTest, boundedCropReprojection)
     std::string srs = FileUtils::readFileIntoString(
         Support::datapath("autzen/autzen-srs.wkt"));
 
-    EptReader reader;
+    CopcReader reader;
     {
         Options options;
-        options.add("filename", eptAutzenPath);
+        options.add("filename", copcAutzenPath);
         options.add("override_srs", srs);
         options.add("polygon", selection4326 + "/EPSG:4326");
         reader.setOptions(options);
     }
 
-    PointTable eptTable;
-
-    reader.prepare(eptTable);
-
-    uint64_t eptNp(0);
-    for (const PointViewPtr& view : reader.execute(eptTable))
-        eptNp += view->size();
+    PointTable copcTable;
+    reader.prepare(copcTable);
+    PointViewSet s = reader.execute(copcTable);
+    PointViewPtr v = *s.begin();
 
     // Now we'll check the result against a crop filter of the source file with
     // the same bounds.
     LasReader source;
     {
         Options options;
-        options.add("filename", Support::datapath("las/1.2-with-color.las"));
+        options.add("filename", copcAutzenPath);
         options.add("override_srs", srs);
         source.setOptions(options);
     }
@@ -777,37 +607,26 @@ TEST(EptReaderTest, boundedCropReprojection)
 
     PointTable sourceTable;
     crop.prepare(sourceTable);
-    uint64_t sourceNp(0);
-    for (const PointViewPtr& view : crop.execute(sourceTable))
-        sourceNp += view->size();
+    PointViewSet s2 = crop.execute(sourceTable);
+    PointViewPtr v2 = *s2.begin();
 
-    EXPECT_EQ(eptNp, sourceNp);
-//ABELL - We don't necessarily have proj.h, so we can't do this:
-/**
-#if defined(PROJ_VERSION_NUMBER) && PROJ_VERSION_NUMBER > 80101
-    EXPECT_EQ(eptNp, 45u);
-    EXPECT_EQ(sourceNp, 45u);
-#else
-    EXPECT_EQ(eptNp, 47u);
-    EXPECT_EQ(sourceNp, 47u);
-#endif
-**/
-    EXPECT_GE(eptNp, 45u);
-    EXPECT_GE(sourceNp, 45u);
-    EXPECT_LE(eptNp, 47u);
-    EXPECT_LE(sourceNp, 47u);
+    EXPECT_EQ(v->size(), v2->size());
+    EXPECT_EQ(v->size(), 47u);
 }
 
 
-TEST(EptReaderTest, ogrCrop)
+TEST(CopcReaderTest, ogrCrop)
 {
-    EptReader reader;
+    const std::string srs = R"(PROJCS["NAD_1983_HARN_Lambert_Conformal_Conic",GEOGCS["GCS_North_American_1983_HARN",DATUM["NAD83_High_Accuracy_Reference_Network",SPHEROID["GRS 1980",6378137,298.2572221010002,AUTHORITY["EPSG","7019"]],AUTHORITY["EPSG","6152"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],PROJECTION["Lambert_Conformal_Conic_2SP"],PARAMETER["standard_parallel_1",43],PARAMETER["standard_parallel_2",45.5],PARAMETER["latitude_of_origin",41.75],PARAMETER["central_meridian",-120.5],PARAMETER["false_easting",1312335.958005249],PARAMETER["false_northing",0],UNIT["foot",0.3048,AUTHORITY["EPSG","9002"]]])";
+
+    CopcReader reader;
     {
         Options options;
-        options.add("filename", eptAutzenPath);
+        options.add("override_srs", srs);
+        options.add("filename", copcAutzenPath);
         NL::json ogr;
         ogr["drivers"] = {"GeoJSON"};
-        ogr["datasource"] = attributesPath;
+        ogr["datasource"] = Support::datapath("autzen/attributes.json");
         ogr["sql"] = "select \"_ogr_geometry_\" from attributes";
 
         options.add("ogr", ogr);
@@ -815,12 +634,10 @@ TEST(EptReaderTest, ogrCrop)
         reader.setOptions(options);
     }
 
-    PointTable eptTable;
-    reader.prepare(eptTable);
-
-    uint64_t eptNp(0);
-    for (const PointViewPtr& view : reader.execute(eptTable))
-        eptNp += view->size();
+    PointTable copcTable;
+    reader.prepare(copcTable);
+    PointViewSet s = reader.execute(copcTable);
+    PointViewPtr v = *s.begin();
 
     // Now we'll check the result against a crop filter of the source file with
     // the same bounds.
@@ -832,27 +649,11 @@ TEST(EptReaderTest, ogrCrop)
     }
     PointTable sourceTable;
     source.prepare(sourceTable);
-    uint64_t sourceNp(0);
-    for (const PointViewPtr& view : source.execute(sourceTable))
-        sourceNp += view->size();
+    PointViewSet s2 = source.execute(sourceTable);
+    PointViewPtr v2 = *s2.begin();
 
-//ABELL - PROJ changed to make the number of points that pass the filter different from
-//  what's in the file we've got stored.
-//    EXPECT_EQ(eptNp, sourceNp);
-//ABELL -  We don't necessarily have proj.h, so can't do the following:
-/**
-#if defined(PROJ_VERSION_NUMBER) && PROJ_VERSION_NUMBER > 80101
-    EXPECT_EQ(eptNp, 89u);
-    EXPECT_EQ(sourceNp, 89u);
-#else
-    EXPECT_EQ(eptNp, 86u);
-    EXPECT_EQ(sourceNp, 86u);
-#endif
-**/
-    EXPECT_LE(eptNp, 89u);
-    EXPECT_LE(sourceNp, 89u);
-    EXPECT_GE(eptNp, 86u);
-    EXPECT_GE(sourceNp, 86u);
+    EXPECT_EQ(v->size(), v2->size());
+    EXPECT_EQ(v->size(), 86u);
 }
 
 } // namespace pdal

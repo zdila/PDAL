@@ -198,7 +198,7 @@ struct IgnoreVLR
     uint16_t m_recordId;
 };
 std::vector<IgnoreVLR> parseIgnoreVLRs(const StringList& ignored);
-const std::vector<Dimension::Id>& pdrfDims(int pdrf);
+const Dimension::IdList& pdrfDims(int pdrf);
 
 // Loader
 
@@ -328,7 +328,7 @@ public:
         ReadFunc f);
 
     void load(uint64_t vlrOffset, uint32_t vlrCount, uint64_t evlrOffset, uint32_t evlrCount);
-    std::vector<char> fetch(const std::string& userId, uint16_t recordId);
+    std::vector<char> fetch(const std::string& userId, uint16_t recordId) const;
 
 private:
     std::mutex m_mutex;
