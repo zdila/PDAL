@@ -1,5 +1,5 @@
 /******************************************************************************
-* Copyright (c) 2017, Connor Manning (connor@hobu.co)
+* Copyright (c) 2021, Hobu, Inc. (info@hobu.co)
 *
 * All rights reserved.
 *
@@ -36,6 +36,7 @@
 
 #include <functional>
 #include <limits>
+#include <algorithm>
 
 #include <nlohmann/json.hpp>
 
@@ -240,7 +241,6 @@ void CopcReader::fetchHeader()
         m_p->copc_info.center_x + m_p->copc_info.halfsize,
         m_p->copc_info.center_y + m_p->copc_info.halfsize,
         m_p->copc_info.center_z + m_p->copc_info.halfsize);
-
 
     validateHeader(m_p->header);
     validateVlrInfo(copc_info_header, m_p->copc_info);
