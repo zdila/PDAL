@@ -42,6 +42,8 @@
 
 namespace pdal
 {
+namespace ept
+{
 
 void TileContents::read()
 {
@@ -181,5 +183,6 @@ void TileContents::transform()
     }
 }
 
+} // namespace ept
 } // namespace pdal
 
