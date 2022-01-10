@@ -43,7 +43,6 @@
 #include <pdal/util/Bounds.hpp>
 #include <pdal/util/Uuid.hpp>
 #include <pdal/pdal_config.hpp>
-#include <pdal/gitsha.h>
 
 #include "LasVLR.hpp"
 
@@ -53,7 +52,6 @@ class OLeStream;
 class ILeStream;
 
 typedef uint8_t PointFormat;
-std::string GetDefaultSoftwareId();
 class LasSummaryData;
 class Scaling;
 
@@ -224,9 +222,9 @@ public:
         { return m_pointLen; }
 	void setPointLen(uint16_t v)
         { m_pointLen = v; }
-    uint16_t basePointLen()
+    uint16_t basePointLen() const
         { return basePointLen(m_pointFormat); }
-    uint16_t basePointLen(uint8_t format);
+    uint16_t basePointLen(uint8_t format) const;
 
     /// Set the number of points.
     /// \param pointCount  Number of points in the file.
@@ -376,7 +374,6 @@ public:
 
     void setSummary(const LasSummaryData& summary);
     bool valid() const;
-    Dimension::IdList usedDims() const;
     const LasVLR *findVlr(const std::string& userId, uint16_t recordId) const;
     void removeVLR(const std::string& userId, uint16_t recordId);
     void removeVLR(const std::string& userId);

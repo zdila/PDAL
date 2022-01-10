@@ -34,6 +34,8 @@
 
 #include <mutex>
 
+#include <pdal/pdal_internal.hpp>
+
 #include "ErrorHandler.hpp"
 
 namespace pdal
@@ -55,8 +57,9 @@ ErrorHandler& ErrorHandler::getGlobalErrorHandler()
 
 namespace {
 
-//ABELL - No idea why this is __stdcall
-#ifdef _WIN32
+// Long ago the error handling functions were built with __stdcall for VB and
+// they're still there.
+#ifdef PDAL_MSVC
 void __stdcall trampoline(::CPLErr code, int num, char const* msg)
 #else
 void trampoline(::CPLErr code, int num, char const* msg)

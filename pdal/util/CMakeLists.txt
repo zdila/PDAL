@@ -12,10 +12,10 @@ include(${PDAL_CMAKE_DIR}/unwind.cmake)
 
 if(LIBUNWIND_FOUND)
     set(BACKTRACE_SOURCE BacktraceUnwind.cpp)
-    set(BACKTRACE_LIBRARIES ${LIBUNWIND_LIBRARIES})
+    set(BACKTRACE_LIBRARIES ${LIBUNWIND_LIBRARIES} ${CMAKE_DL_LIBS})
 elseif(LIBEXECINFO_FOUND)
     set(BACKTRACE_SOURCE BacktraceExecinfo.cpp)
-    set(BACKTRACE_LIBRARIES ${LIBEXECINFO_LIBRARIES})
+    set(BACKTRACE_LIBRARIES ${LIBEXECINFO_LIBRARIES} ${CMAKE_DL_LIBS})
 else()
     set(BACKTRACE_SOURCE BacktraceNone.cpp)
 endif()
@@ -37,11 +37,8 @@ target_link_libraries(${PDAL_UTIL_LIB_NAME}
     PRIVATE
         ${BACKTRACE_LIBRARIES}
         ${PDAL_BOOST_LIB_NAME}
-        ${CMAKE_DL_LIBS}
         ${CMAKE_THREAD_LIBS_INIT}
 )
-target_include_directories(${PDAL_UTIL_LIB_NAME} PRIVATE
-    ${PDAL_VENDOR_DIR}/pdalboost)
 
 set_target_properties(${PDAL_UTIL_LIB_NAME} PROPERTIES
     VERSION "${PDAL_BUILD_VERSION}"
