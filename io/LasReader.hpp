@@ -42,16 +42,21 @@
 #include <pdal/Reader.hpp>
 #include <pdal/Streamable.hpp>
 
-//#include "LasError.hpp"
-
 namespace pdal
 {
 
+namespace las
+{
+    struct Header;
+    struct Vlr;
+    using VlrList = std::vector<Vlr>;
+};
+
 class NitfReader;
-class LasHeader;
 class LeExtractor;
 class PointDimensions;
 class LazPerfVlrDecompressor;
+class LasHeader;
 
 class PDAL_DLL LasReader : public Reader, public Streamable
 {
@@ -85,6 +90,7 @@ public:
     std::string getName() const;
 
     const LasHeader& header() const;
+    uint64_t vlrData(const std::string& userId, uint16_t recordId, char const * & data);
     point_count_t getNumPoints() const;
 
 protected:
@@ -109,22 +115,15 @@ private:
     void readExtraBytesVlr();
     void extractHeaderMetadata(MetadataNode& forward, MetadataNode& m);
     void extractVlrMetadata(MetadataNode& forward, MetadataNode& m);
-    void loadPoint(PointRef& point);
-    void loadPointV10(PointRef& point);
-    void loadPointV14(PointRef& point);
     void loadPoint(PointRef& point, char *buf, size_t bufsize);
     void loadPointV10(PointRef& point, char *buf, size_t bufsize);
     void loadPointV14(PointRef& point, char *buf, size_t bufsize);
     void loadExtraDims(LeExtractor& istream, PointRef& data);
-    point_count_t readFileBlock(std::vector<char>& buf,
-        point_count_t maxPoints);
-    void handleLaszip(int result);
+    point_count_t readFileBlock(std::vector<char>& buf, point_count_t maxPoints);
 
-    struct Args;
-    std::unique_ptr<Args> m_args;
-
+    struct Options;
     struct Private;
-    std::unique_ptr<Private> m_p;
+    std::unique_ptr<Private> d;
 };
 
 } // namespace pdal

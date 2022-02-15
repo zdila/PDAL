@@ -45,7 +45,7 @@ set(PDAL_SOLIB_BUILD 0)
 set(PDAL_API_VERSION ${PDAL_SOLIB_MAJOR})
 set(PDAL_BUILD_VERSION
     "${PDAL_SOLIB_MAJOR}.${PDAL_SOLIB_MINOR}.${PDAL_SOLIB_BUILD}")
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -66,7 +66,6 @@ else()
 endif()
 set(PDAL_LIB_NAME pdalcpp)
 set(PDAL_UTIL_LIB_NAME pdal_util)
-set(PDAL_BOOST_LIB_NAME pdal_boost)
 set(PDAL_KAZHDAN_LIB_NAME pdal_kazhdan)
 set(PDAL_TEST_SUPPORT_OBJS pdal_test_support)
 
@@ -126,8 +125,6 @@ set(PDAL_BUILD_TYPE ${CMAKE_BUILD_TYPE})
 
 include(${PDAL_CMAKE_DIR}/gdal.cmake)
 include(${PDAL_CMAKE_DIR}/geotiff.cmake)  # Optional (not really)
-include(${PDAL_CMAKE_DIR}/lazperf.cmake)  # Optional
-include(${PDAL_CMAKE_DIR}/laszip.cmake)  # Optional
 include(${PDAL_CMAKE_DIR}/threads.cmake)
 include(${PDAL_CMAKE_DIR}/zlib.cmake)
 include(${PDAL_CMAKE_DIR}/lzma.cmake)
@@ -138,6 +135,7 @@ include(${PDAL_CMAKE_DIR}/libxml2.cmake)
 include(${PDAL_CMAKE_DIR}/dimension.cmake)
 include(${PDAL_CMAKE_DIR}/arbiter.cmake)
 include(${PDAL_CMAKE_DIR}/nlohmann.cmake)
+include(${PDAL_CMAKE_DIR}/lazperf.cmake)
 include(${PDAL_CMAKE_DIR}/openssl.cmake) # Optional
 
 #------------------------------------------------------------------------------
@@ -147,10 +145,6 @@ include(${PDAL_CMAKE_DIR}/openssl.cmake) # Optional
 # from http://stackoverflow.com/questions/1435953/how-can-i-pass-git-sha1-to-compiler-as-definition-using-cmake
 include(GetGitRevisionDescription)
 get_git_head_revision(GIT_REFSPEC GIT_SHA1)
-
-configure_file(
-  "${PROJECT_SOURCE_DIR}/gitsha.cpp.in"
-  "${PROJECT_SOURCE_DIR}/pdal/gitsha.cpp")
 
 # needs to come before configuration of pdal_features
 if(APPLE)
@@ -178,15 +172,14 @@ endif()
 
 add_subdirectory(plugins)
 
-#include_directories(vendor/pdalboost)
 if (WITH_TESTS)
     include (${PDAL_CMAKE_DIR}/gtest.cmake)
     add_subdirectory(test)
 endif()
 add_subdirectory(dimbuilder)
-add_subdirectory(vendor/pdalboost)
 add_subdirectory(vendor/arbiter)
 add_subdirectory(vendor/kazhdan)
+add_subdirectory(vendor/lazperf)
 add_subdirectory(pdal/util)
 add_subdirectory(tools)
 add_subdirectory(apps)
@@ -244,11 +237,6 @@ if (NOT PDAL_HAVE_LZMA)
         ${PDAL_SRC_DIR}/compression/LzmaCompression.cpp)
     list(REMOVE_ITEM SRCS ${LZMA_SRCS})
 endif()
-if (NOT PDAL_HAVE_LAZPERF)
-    file(GLOB LAZPERF_SRCS
-        ${PDAL_SRC_DIR}/compression/LazPerfVlrCompression.cpp)
-    list(REMOVE_ITEM SRCS ${LAZPERF_SRCS})
-endif()
 
 if (GDAL_VERSION VERSION_LESS 3.0.0)
     file(GLOB PROJPIPELINE_FILTER_SRCS
@@ -267,12 +255,10 @@ target_include_directories(${PDAL_BASE_LIB_NAME}
         ${PROJECT_BINARY_DIR}/include
         ${PDAL_VENDOR_DIR}
         ${PDAL_VENDOR_DIR}/eigen
-        ${PDAL_VENDOR_DIR}/pdalboost
         ${LIBXML2_INCLUDE_DIR}
         ${ZSTD_INCLUDE_DIRS}
         ${NLOHMANN_INCLUDE_DIR}
         ${GDAL_INCLUDE_DIR}
-        ${LASZIP_INCLUDE_DIR}
 )
 target_link_libraries(${PDAL_BASE_LIB_NAME}
     PRIVATE
@@ -280,7 +266,6 @@ target_link_libraries(${PDAL_BASE_LIB_NAME}
         ${CMAKE_DL_LIBS}
         ${GDAL_LIBRARY}
         ${GEOTIFF_LIBRARY}
-        ${LASZIP_LIBRARY}
         ${LIBXML2_LIBRARIES}
         ${ZLIB_LIBRARIES}
         ${LIBLZMA_LIBRARIES}
@@ -290,13 +275,9 @@ target_link_libraries(${PDAL_BASE_LIB_NAME}
         ${PDAL_UTIL_LIB_NAME}
         ${PDAL_ARBITER_LIB_NAME}
         ${PDAL_KAZHDAN_LIB_NAME}
-        ${LAZPERF_LIBRARY}
+        ${PDAL_LAZPERF_LIB_NAME}
     INTERFACE
         ${PDAL_LIBDIR}
-)
-target_compile_definitions(${PDAL_BASE_LIB_NAME}
-    PRIVATE
-        ${LASZIP_DEFINES}
 )
 set_target_properties(${PDAL_BASE_LIB_NAME} PROPERTIES
     VERSION ${PDAL_BUILD_VERSION}
@@ -343,7 +324,6 @@ endif()
 install(DIRECTORY ${PDAL_INCLUDE_DIR}/pdal
     DESTINATION include
     FILES_MATCHING PATTERN "*.hpp"
-    PATTERN "gitsha.h"
 #    PATTERN "pdal/private" EXCLUDE
 #    PATTERN "pdal/io/private" EXCLUDE
 #    PATTERN "pdal/pdal/private" EXCLUDE

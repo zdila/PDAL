@@ -39,65 +39,178 @@
 #include <pdal/Scaling.hpp>
 #include <pdal/util/Utils.hpp>
 #include <pdal/util/Algorithm.hpp>
-
-#include "LasSummaryData.hpp"
-
-#include "GeotiffSupport.hpp"
+#include <io/private/las/Header.hpp>
+#include <io/private/las/Srs.hpp>
+#include <io/private/las/Utils.hpp>
 
 namespace pdal
 {
 
 const std::string LasHeader::FILE_SIGNATURE("LASF");
-#ifndef _WIN32
-const size_t LasHeader::LEGACY_RETURN_COUNT;
-const size_t LasHeader::RETURN_COUNT;
-#endif
 
 std::string GetDefaultSoftwareId()
 {
-    std::string ver(Config::versionString());
-    std::stringstream oss;
-    std::ostringstream revs;
-    revs << Config::sha1();
-    oss << "PDAL " << ver << " (" << revs.str().substr(0, 6) <<")";
-    return oss.str();
+    return las::generateSoftwareId();
 }
 
-LasHeader::LasHeader() : m_fileSig(FILE_SIGNATURE), m_sourceId(0),
-    m_globalEncoding(0), m_versionMinor(2), m_systemId(getSystemIdentifier()),
-    m_createDOY(0), m_createYear(0), m_vlrOffset(0), m_pointOffset(0),
-    m_vlrCount(0), m_pointFormat(0), m_pointLen(0), m_pointCount(0),
-    m_isCompressed(false), m_eVlrOffset(0), m_eVlrCount(0), m_nosrs(false)
+struct LasHeader::Private
 {
-    std::time_t now;
-    std::time(&now);
-    std::tm* ptm = std::gmtime(&now);
-    if (ptm)
-    {
-        m_createDOY = static_cast<uint16_t>(ptm->tm_yday);
-        m_createYear = static_cast<uint16_t>(ptm->tm_year + 1900);
-    }
+    Private(las::Header& h, las::Srs& srs, las::VlrList& vlrs) : h(h), srs(srs), vlrs(vlrs)
+    {}
 
-    m_pointLen = basePointLen(m_pointFormat);
-    m_pointCountByReturn.fill(0);
-    m_scales.fill(1.0);
-    m_offsets.fill(0.0);
-}
+    las::Header& h;
+    las::Srs& srs;
+    las::VlrList& vlrs;
 
+    VlrList interfaceVlrs;
+};
 
-void LasHeader::initialize(LogPtr log, uintmax_t fileSize, bool nosrs)
+LasHeader::LasHeader(las::Header& h, las::Srs& srs, las::VlrList& vlrs) :
+    d(std::make_unique<Private>(h, srs, vlrs))
+{}
+
+LasHeader::~LasHeader()
+{}
+
+std::string LasHeader::getSystemIdentifier() const
 {
-    m_log = log;
-    m_fileSize = fileSize;
-    m_nosrs = nosrs;
+    return d->h.systemId;
 }
 
+std::string LasHeader::fileSignature() const
+{
+    return d->h.magic;
+}
+
+uint16_t LasHeader::fileSourceId() const
+{
+    return d->h.fileSourceId;
+}
+
+void LasHeader::setFileSourceId(uint16_t v)
+{
+    d->h.fileSourceId = v;
+}
+
+uint16_t LasHeader::globalEncoding() const
+{
+    return d->h.globalEncoding;
+}
+
+void LasHeader::setGlobalEncoding(uint16_t globalEncoding)
+{
+    d->h.globalEncoding = globalEncoding;
+}
+
+Uuid LasHeader::projectId() const
+{
+    return d->h.projectGuid;
+}
+
+void LasHeader::setProjectId(const Uuid& v)
+{
+    d->h.projectGuid = v;
+}
+
+uint8_t LasHeader::versionMajor() const
+{
+    return d->h.versionMajor;
+}
+
+uint8_t LasHeader::versionMinor() const
+{
+    return d->h.versionMinor;
+}
+
+void LasHeader::setVersionMinor(uint8_t v)
+{
+    d->h.versionMinor = v;
+}
 
 std::string LasHeader::versionString() const
 {
-    return "1." + std::to_string(m_versionMinor);
+    return std::to_string(versionMajor()) + "." + std::to_string(versionMinor());
 }
 
+bool LasHeader::versionAtLeast(uint8_t major, uint8_t minor) const
+{
+    return d->h.versionAtLeast(major, minor);
+}
+
+bool LasHeader::versionEquals(uint8_t major, uint8_t minor) const
+{
+    return (major == 1 && minor == versionMinor());
+}
+
+std::string LasHeader::systemId() const
+{
+    return d->h.systemId;
+}
+
+void LasHeader::setSystemId(std::string const& v)
+{
+    d->h.systemId = v;
+}
+
+std::string LasHeader::softwareId() const
+{
+    return d->h.softwareId;
+}
+
+void LasHeader::setSoftwareId(std::string const& v)
+{
+    d->h.softwareId = v;
+}
+
+uint16_t LasHeader::creationDOY() const
+{
+    return d->h.creationDoy;
+}
+
+void LasHeader::setCreationDOY(uint16_t v)
+{
+    d->h.creationDoy = v;
+}
+
+uint16_t LasHeader::creationYear() const
+{
+    return d->h.creationYear;
+}
+
+void LasHeader::setCreationYear(uint16_t v)
+{
+    d->h.creationYear = v;
+}
+
+uint16_t LasHeader::vlrOffset() const
+{
+    return d->h.vlrOffset;
+}
+
+void LasHeader::setVlrOffset(uint16_t offset)
+{
+    (void)offset;
+}
+
+uint32_t LasHeader::pointOffset() const
+{
+    return d->h.pointOffset;
+}
+
+void LasHeader::setPointOffset(uint32_t offset)
+{
+    (void)offset;
+}
+
+uint8_t LasHeader::pointFormat() const
+{
+    return d->h.pointFormatBits;
+}
+
+void LasHeader::setPointFormat(uint8_t format)
+{
+    d->h.pointFormatBits = format;
+}
 
 Utils::StatusWithReason LasHeader::pointFormatSupported() const
 {
@@ -116,450 +229,287 @@ Utils::StatusWithReason LasHeader::pointFormatSupported() const
     return true;
 }
 
-
-void LasHeader::setSummary(const LasSummaryData& summary)
+uint16_t LasHeader::pointLen() const
 {
-    m_pointCount = summary.getTotalNumPoints();
-    try
-    {
-        for (size_t num = 0; num < RETURN_COUNT; ++num)
-            m_pointCountByReturn[num] = (int)summary.getReturnCount(num);
-    }
-    catch (const LasSummaryData::error& err)
-    {
-        throw error(err.what());
-    }
-    m_bounds = summary.getBounds();
+    return d->h.pointSize;
 }
 
+void LasHeader::setPointLen(uint16_t length)
+{
+    (void)length;
+}
+
+uint16_t LasHeader::basePointLen()
+{
+    return (uint16_t)d->h.baseCount();
+}
+
+uint16_t LasHeader::basePointLen(uint8_t format)
+{
+    return (uint16_t)(las::baseCount(format));
+}
+
+uint64_t LasHeader::pointCount() const
+{
+    return d->h.pointCount();
+}
+
+void LasHeader::setPointCount(uint64_t pointCount)
+{
+    (void)pointCount;
+}
+
+uint64_t LasHeader::pointCountByReturn(std::size_t index) const
+{
+    return versionMinor() == 4 ? d->h.ePointsByReturn[index] : d->h.legacyPointsByReturn[index];
+}
+
+void LasHeader::setPointCountByReturn(std::size_t index, uint64_t count)
+{
+    (void)index;
+    (void)count;
+}
+
+size_t LasHeader::maxReturnCount() const
+{
+    return (versionAtLeast(1, 4) ? RETURN_COUNT : LEGACY_RETURN_COUNT);
+}
+
+double LasHeader::scaleX() const
+{
+    return d->h.scale.x;
+}
+
+double LasHeader::scaleY() const
+{
+    return d->h.scale.y;
+}
+
+double LasHeader::scaleZ() const
+{
+    return d->h.scale.z;
+}
 
 void LasHeader::setScaling(const Scaling& scaling)
 {
-    const double& xs = scaling.m_xXform.m_scale.m_val;
-    const double& ys = scaling.m_yXform.m_scale.m_val;
-    const double& zs = scaling.m_zXform.m_scale.m_val;
-    if (xs == 0)
-        throw error("X scale of 0.0 is invalid!");
-
-    if (ys == 0)
-        throw error("Y scale of 0.0 is invalid!");
-
-    if (zs == 0)
-        throw error("Z scale of 0.0 is invalid!");
-
-    m_scales[0] = xs;
-    m_scales[1] = ys;
-    m_scales[2] = zs;
-
-    m_offsets[0] = scaling.m_xXform.m_offset.m_val;
-    m_offsets[1] = scaling.m_yXform.m_offset.m_val;
-    m_offsets[2] = scaling.m_zXform.m_offset.m_val;
+    (void)scaling;
 }
 
-
-uint16_t LasHeader::basePointLen(uint8_t type) const
+double LasHeader::offsetX() const
 {
-    const uint16_t len[] = { 20, 28, 26, 34, 57, 63, 30, 36, 38, 59, 67 };
-    const size_t numTypes = sizeof(len) / sizeof(len[0]);
-
-    if (type > numTypes)
-        return 0;
-    return len[type];
+    return d->h.offset.x;
 }
 
+double LasHeader::offsetY() const
+{
+    return d->h.offset.y;
+}
+
+double LasHeader::offsetZ() const
+{
+    return d->h.offset.z;
+}
+
+void LasHeader::setOffset(double x, double y, double z)
+{
+    (void)x;
+    (void)y;
+    (void)z;
+}
+
+double LasHeader::maxX() const
+{
+    return d->h.bounds.maxx;
+}
+
+double LasHeader::minX() const
+{
+    return d->h.bounds.minx;
+}
+
+double LasHeader::maxY() const
+{
+    return d->h.bounds.maxy;
+}
+
+double LasHeader::minY() const
+{
+    return d->h.bounds.miny;
+}
+
+double LasHeader::maxZ() const
+{
+    return d->h.bounds.maxz;
+}
+
+double LasHeader::minZ() const
+{
+    return d->h.bounds.minz;
+}
+
+const BOX3D& LasHeader::getBounds() const
+{
+    return d->h.bounds;
+}
+
+void LasHeader::setBounds(const BOX3D& bounds)
+{
+    (void)bounds;
+}
+
+bool LasHeader::hasTime() const
+{
+    return d->h.hasTime();
+}
+
+bool LasHeader::hasColor() const
+{
+    return d->h.hasColor();
+}
+
+bool LasHeader::hasWave() const
+{
+    return d->h.hasWave();
+}
+
+bool LasHeader::hasInfrared() const
+{
+    return d->h.hasInfrared();
+}
+
+bool LasHeader::has14PointFormat() const
+{
+    return d->h.has14PointFormat();
+}
+
+bool LasHeader::useWkt() const
+{
+    return d->h.useWkt();
+}
+
+bool LasHeader::compressed() const
+{
+    return d->h.dataCompressed();
+}
+
+void LasHeader::setCompressed(bool b)
+{
+    (void)b;
+}
+
+uint32_t LasHeader::vlrCount() const
+{
+    return d->h.vlrCount;
+}
+
+void LasHeader::setVlrCount(uint32_t vlrCount)
+{
+    (void)vlrCount;
+}
+
+uint64_t LasHeader::eVlrOffset() const
+{
+    return d->h.evlrOffset;
+}
+
+void LasHeader::setEVlrOffset(uint64_t offset)
+{
+    (void)offset;
+}
+
+uint32_t LasHeader::eVlrCount() const
+{
+    return d->h.evlrCount;
+}
+
+void LasHeader::setEVlrCount(uint32_t count)
+{
+    (void)count;
+}
+
+std::string const& LasHeader:: compressionInfo() const
+{
+    static std::string dummy;
+    return dummy;
+}
+
+void LasHeader::setCompressionInfo(std::string const& info)
+{
+    (void)info;
+}
+
+SpatialReference LasHeader::srs() const
+{
+    return d->srs.get();
+}
+
+std::string LasHeader::geotiffPrint()
+{
+    return d->srs.geotiffString();
+}
+
+void LasHeader::setSummary(const LasSummaryData& summary)
+{
+    (void)summary;
+}
 
 bool LasHeader::valid() const
 {
-    if (m_fileSig != FILE_SIGNATURE)
-        return false;
-    if (m_versionMinor > 10)
-        return false;
-    if (m_createDOY > 366)
-        return false;
-    if (m_createYear < 1970 || m_createYear > 2100)
-       return false;
     return true;
 }
 
-
-void LasHeader::get(ILeStream& in, Uuid& uuid)
-{
-    std::vector<char> buf(uuid.size());
-
-    in.get(buf.data(), uuid.size());
-    uuid.unpack(buf.data());
-}
-
-
-void LasHeader::put(OLeStream& out, Uuid uuid)
-{
-    char buf[uuid.size()];
-
-    uuid.pack(buf);
-    out.put(buf, uuid.size());
-}
-
-
 Dimension::IdList LasHeader::usedDims() const
 {
-    using namespace Dimension;
-
-    Dimension::Id dims[] = { Id::ReturnNumber, Id::NumberOfReturns,
-        Id::X, Id::Y, Id::Z, Id::Intensity, Id::ScanChannel,
-        Id::ScanDirectionFlag, Id::EdgeOfFlightLine, Id::Classification,
-        Id::UserData, Id::ScanAngleRank, Id::PointSourceId };
-
-    Dimension::IdList ids(std::begin(dims), std::end(dims));
-
-    if (hasTime())
-        ids.push_back(Id::GpsTime);
-    if (hasColor())
-    {
-        ids.push_back(Id::Red);
-        ids.push_back(Id::Green);
-        ids.push_back(Id::Blue);
-    }
-    if (hasInfrared())
-        ids.push_back(Id::Infrared);
-    if (has14PointFormat())
-    {
-        ids.push_back(Id::ScanChannel);
-        ids.push_back(Id::ClassFlags);
-    }
-
-    return ids;
+    return las::pdrfDims(pointFormat());
 }
 
-void LasHeader::setSrs()
+const LasVLR *LasHeader::findVlr(const std::string& userId, uint16_t recordId) const
 {
-    // If we're not processing SRS, just return.
-    if (m_nosrs)
-        return;
-
-    if (has14PointFormat() && !useWkt())
-    {
-        m_log->get(LogLevel::Error) << "Global encoding WKT flag not set "
-            "for point format 6 - 10." << std::endl;
-    }
-    if (findVlr(TRANSFORM_USER_ID, WKT_RECORD_ID) &&
-        findVlr(TRANSFORM_USER_ID, GEOTIFF_DIRECTORY_RECORD_ID))
-    {
-        m_log->get(LogLevel::Debug) << "File contains both "
-            "WKT and GeoTiff VLRs which is disallowed." << std::endl;
-    }
-
-    // We always use WKT for formats 6+, regardless of the WKT global encoding bit (warning
-    // issued above.)
-    // Otherwise (formats 0-5), we only use it of the WKT bit is set and it's version 1.4 
-    // or better.  For valid files the WKT bit won't be set for files < version 1.4, but
-    // we can't be sure, so we check here.
-    try
-    {
-        if ((useWkt() && m_versionMinor >= 4) || has14PointFormat())
-            setSrsFromWkt();
-        else
-            setSrsFromGeotiff();
-    }
-    catch (Geotiff::error& err)
-    {
-        m_log->get(LogLevel::Error) << "Could not create an SRS: " <<
-            err.what() << std::endl;
-    }
-    catch (...)
-    {
-        m_log->get(LogLevel::Error) << "Could not create an SRS" << std::endl;
-    }
+    for (const LasVLR& v : vlrs())
+        if (v.matches(userId, recordId))
+            return &v;
+    return nullptr;
 }
-
 
 void LasHeader::removeVLR(const std::string& userId, uint16_t recordId)
 {
-    auto matches = [&userId, recordId](const LasVLR& vlr)
-    {
-        return vlr.matches(userId, recordId);
-    };
-
-    Utils::remove_if(m_vlrs, matches);
-    Utils::remove_if(m_eVlrs, matches);
+    (void)userId;
+    (void)recordId;
 }
-
 
 void LasHeader::removeVLR(const std::string& userId)
 {
-
-    auto matches = [&userId ](const LasVLR& vlr)
-    {
-        return vlr.matches(userId);
-    };
-
-    Utils::remove_if(m_vlrs, matches);
-    Utils::remove_if(m_eVlrs, matches);
+    (void)userId;
 }
 
-
-const LasVLR *LasHeader::findVlr(const std::string& userId,
-    uint16_t recordId) const
+void LasHeader::initialize(LogPtr log, uintmax_t fileSize, bool nosrs)
 {
-    for (auto vi = m_vlrs.begin(); vi != m_vlrs.end(); ++vi)
-    {
-        const LasVLR& vlr = *vi;
-        if (vlr.matches(userId, recordId))
-            return &vlr;
-    }
-    return NULL;
+    (void)log;
+    (void)fileSize;
+    (void)nosrs;
 }
 
-
-void LasHeader::setSrsFromWkt()
+const VlrList& LasHeader::vlrs() const
 {
-    const LasVLR *vlr = findVlr(TRANSFORM_USER_ID, WKT_RECORD_ID);
-    if (!vlr)
-        vlr = findVlr(LIBLAS_USER_ID, WKT_RECORD_ID);
-    if (!vlr || vlr->dataLen() == 0)
-        return;
-
-    // There is supposed to be a NULL byte at the end of the data,
-    // but sometimes there isn't because some people don't follow the
-    // rules.  If there is a NULL byte, don't stick it in the
-    // wkt string.
-    size_t len = vlr->dataLen();
-    const char *c = vlr->data() + len - 1;
-    if (*c == 0)
-        len--;
-    std::string wkt(vlr->data(), len);
-    // Strip any excess NULL bytes from the WKT.
-    wkt.erase(std::find(wkt.begin(), wkt.end(), '\0'), wkt.end());
-    m_srs.set(wkt);
+    d->interfaceVlrs.clear();
+    for (las::Vlr& v : d->vlrs) 
+        d->interfaceVlrs.emplace_back(&v);
+    return d->interfaceVlrs;
 }
-
-
-void LasHeader::setSrsFromGeotiff()
-{
-    const LasVLR *vlr = findVlr(TRANSFORM_USER_ID, GEOTIFF_DIRECTORY_RECORD_ID);
-    // We must have a directory entry.
-    if (!vlr)
-        return;
-    auto data = reinterpret_cast<const uint8_t *>(vlr->data());
-    size_t dataLen = vlr->dataLen();
-
-    std::vector<uint8_t> directoryRec(data, data + dataLen);
-
-    vlr = findVlr(TRANSFORM_USER_ID, GEOTIFF_DOUBLES_RECORD_ID);
-    data = NULL;
-    dataLen = 0;
-    if (vlr && !vlr->isEmpty())
-    {
-        data = reinterpret_cast<const uint8_t *>(vlr->data());
-        dataLen = vlr->dataLen();
-    }
-    std::vector<uint8_t> doublesRec(data, data + dataLen);
-
-    vlr = findVlr(TRANSFORM_USER_ID, GEOTIFF_ASCII_RECORD_ID);
-    data = NULL;
-    dataLen = 0;
-    if (vlr && !vlr->isEmpty())
-    {
-        data = reinterpret_cast<const uint8_t *>(vlr->data());
-        dataLen = vlr->dataLen();
-    }
-    std::vector<uint8_t> asciiRec(data, data + dataLen);
-
-    GeotiffSrs geotiff(directoryRec, doublesRec, asciiRec, m_log);
-    m_geotiff_print = geotiff.gtiffPrintString();
-    SpatialReference gtiffSrs = geotiff.srs();
-    if (!gtiffSrs.empty())
-        m_srs = gtiffSrs;
-}
-
 
 ILeStream& operator>>(ILeStream& in, LasHeader& h)
 {
-    uint8_t versionMajor;
-    uint32_t legacyPointCount;
-    uint32_t legacyReturnCount;
-
-    in.get(h.m_fileSig, 4);
-    if (!Utils::iequals(h.m_fileSig, LasHeader::FILE_SIGNATURE))
-        throw LasHeader::error("File signature is not 'LASF', "
-            "is this an LAS/LAZ file?");
-
-    in >> h.m_sourceId >> h.m_globalEncoding;
-    LasHeader::get(in, h.m_projectUuid);
-    in >> versionMajor >> h.m_versionMinor;
-    in.get(h.m_systemId, 32);
-
-    in.get(h.m_softwareId, 32);
-    in >> h.m_createDOY >> h.m_createYear >> h.m_vlrOffset >>
-        h.m_pointOffset >> h.m_vlrCount >> h.m_pointFormat >>
-        h.m_pointLen >> legacyPointCount;
-    h.m_pointCount = legacyPointCount;
-
-    // Although it isn't part of the LAS spec, the two high bits have been used
-    // to indicate compression, though only the high bit is currently used.
-    if (h.m_pointFormat & 0x80)
-        h.setCompressed(true);
-    h.m_pointFormat &= ~0xC0;
-
-    for (size_t i = 0; i < LasHeader::LEGACY_RETURN_COUNT; ++i)
-    {
-        in >> legacyReturnCount;
-        h.m_pointCountByReturn[i] = legacyReturnCount;
-    }
-
-    in >> h.m_scales[0] >> h.m_scales[1] >> h.m_scales[2];
-    in >> h.m_offsets[0] >> h.m_offsets[1] >> h.m_offsets[2];
-
-    double maxX, minX;
-    double maxY, minY;
-    double maxZ, minZ;
-    in >> maxX >> minX >> maxY >> minY >> maxZ >> minZ;
-    h.m_bounds = BOX3D(minX, minY, minZ, maxX, maxY, maxZ);
-
-    if (h.versionAtLeast(1, 3))
-    {
-        uint64_t waveformOffset;
-        in >> waveformOffset;
-    }
-    if (h.versionAtLeast(1, 4))
-    {
-        in >> h.m_eVlrOffset >> h.m_eVlrCount >> h.m_pointCount;
-        for (size_t i = 0; i < LasHeader::RETURN_COUNT; ++i)
-            in >> h.m_pointCountByReturn[i];
-    }
-
-    if (!h.compressed() && h.m_pointOffset > h.m_fileSize)
-        throw LasHeader::error("Invalid point offset - exceeds file size.");
-    if (!h.compressed() && h.m_pointOffset + h.m_pointCount * h.m_pointLen > h.m_fileSize)
-        throw LasHeader::error("Invalid point count. Number of points exceeds file size.");
-    if (h.m_vlrOffset > h.m_fileSize)
-        throw LasHeader::error("Invalid VLR offset - exceeds file size.");
-    // There was a bug in PDAL where it didn't write the VLR offset :(
-    /**
-    if (h.m_eVlrOffset > h.m_fileSize)
-        throw LasHeader::error("Invalid extended VLR offset - exceeds file size.");
-    **/
-
-    // Read regular VLRs.
-    in.seek(h.m_vlrOffset);
-    for (size_t i = 0; i < h.m_vlrCount; ++i)
-    {
-        LasVLR r;
-        if (!r.read(in, h.m_pointOffset))
-        {
-            std::string err = "Invalid VLR #" + std::to_string(i + 1) +
-                " (" + r.userId()  + "/" + std::to_string(r.recordId()) +
-                ") - size exceeds specified file range.";
-            throw LasHeader::error(err);
-        }
-        h.m_vlrs.push_back(std::move(r));
-    }
-
-    // Read extended VLRs.
-    if (h.versionAtLeast(1, 4))
-    {
-        in.seek(h.m_eVlrOffset);
-        for (size_t i = 0; i < h.m_eVlrCount; ++i)
-        {
-            ExtLasVLR r;
-            if (!r.read(in, h.m_fileSize))
-                throw LasHeader::error("Invalid Extended VLR size - exceeds file size.");
-            h.m_vlrs.push_back(std::move(r));
-        }
-    }
-    h.setSrs();
-
     return in;
 }
 
-
 OLeStream& operator<<(OLeStream& out, const LasHeader& h)
 {
-    uint32_t legacyPointCount = 0;
-    if (h.m_pointCount <= (std::numeric_limits<uint32_t>::max)())
-        legacyPointCount = (uint32_t)h.m_pointCount;
-
-    out.put(h.m_fileSig, 4);
-    if (h.versionEquals(1, 0))
-        out << (uint32_t)0;
-    else if (h.versionEquals(1, 1))
-        out << h.m_sourceId << (uint16_t)0;
-    else
-        out << h.m_sourceId << h.m_globalEncoding;
-    LasHeader::put(out, h.m_projectUuid);
-    out << (uint8_t)1 << h.m_versionMinor;
-    out.put(h.m_systemId, 32);
-    out.put(h.m_softwareId, 32);
-
-    uint8_t pointFormat = h.m_pointFormat;
-    if (h.compressed())
-        pointFormat |= 0x80;
-
-    out << h.m_createDOY << h.m_createYear << h.m_vlrOffset <<
-        h.m_pointOffset << h.m_vlrCount << pointFormat <<
-        h.m_pointLen << legacyPointCount;
-
-    for (size_t i = 0; i < LasHeader::LEGACY_RETURN_COUNT; ++i)
-    {
-        //ABELL - This needs fixing.  Should set to 0 when we exceed
-        // std::numeric_limits<uint32_t>::max().
-        uint32_t legacyReturnCount =
-            static_cast<uint32_t>((std::min)(h.m_pointCountByReturn[i],
-                (uint64_t)(std::numeric_limits<uint32_t>::max)()));
-        out << legacyReturnCount;
-    }
-
-    out << h.m_scales[0] << h.m_scales[1] << h.m_scales[2];
-    out << h.m_offsets[0] << h.m_offsets[1] << h.m_offsets[2];
-
-    out << h.maxX() << h.minX() << h.maxY() << h.minY() << h.maxZ() << h.minZ();
-
-    if (h.versionAtLeast(1, 3))
-        out << (uint64_t)0;
-    if (h.versionAtLeast(1, 4))
-    {
-        out << h.m_eVlrOffset << h.m_eVlrCount << h.m_pointCount;
-        for (size_t i = 0; i < LasHeader::RETURN_COUNT; ++i)
-            out << h.m_pointCountByReturn[i];
-    }
-
     return out;
 }
 
-
-std::ostream& operator<<(std::ostream& out, const LasHeader& h)
+std::ostream& operator<<(std::ostream& ostr, const LasHeader& h)
 {
-    out << "File version = " << "1." << (int)h.m_versionMinor << "\n";
-    out << "File signature: " << h.m_fileSig << "\n";
-    out << "File source ID: " << h.m_sourceId << "\n";
-    out << "Global encoding: " << h.m_globalEncoding << "\n";
-    out << "Project UUID: " << h.m_projectUuid << "\n";
-    out << "System ID: " << h.m_systemId << "\n";
-    out << "Software ID: " << h.m_softwareId << "\n";
-    out << "Creation DOY: " << h.m_createDOY << "\n";
-    out << "Creation Year: " << h.m_createYear << "\n";
-    out << "VLR offset (header size): " << h.m_vlrOffset << "\n";
-    out << "VLR Count: " << h.m_vlrCount << "\n";
-    out << "Point format: " << (int)h.m_pointFormat << "\n";
-    out << "Point offset: " << h.m_pointOffset << "\n";
-    out << "Point count: " << h.m_pointCount << "\n";
-    for (size_t i = 0; i < LasHeader::RETURN_COUNT; ++i)
-        out << "Point count by return[" << i << "]: " <<
-            h.m_pointCountByReturn[i] << "\n";
-    out << "Scales X/Y/Z: " << h.m_scales[0] << "/" <<
-        h.m_scales[1] << "/" << h.m_scales[2] << "\n";
-    out << "Offsets X/Y/Z: " << h.m_offsets[0] << "/" <<
-        h.m_offsets[1] << "/" << h.m_offsets[2] << "\n";
-    out << "Max X/Y/Z: " << h.maxX() << "/" <<
-        h.maxY() << "/" << h.maxZ() << "\n";
-    out << "Min X/Y/Z: " << h.minX() << "/" <<
-        h.minY() << "/" << h.minZ() << "\n";
-    if (h.versionAtLeast(1, 4))
-    {
-        out << "Ext. VLR offset: " << h.m_eVlrOffset << "\n";
-        out << "Ext. VLR count: " << h.m_eVlrCount << "\n";
-    }
-    out << "Compressed: " << (h.m_isCompressed ? "true" : "false") << "\n";
-    return out;
+    return ostr;
 }
 
 } // namespace pdal

@@ -18,9 +18,7 @@ RUN git clone http://github.com/PDAL/PDAL.git pdal && \
         -DBUILD_PLUGIN_TILEDB=ON \
         -DBUILD_PLUGIN_E57=ON \
         -DBUILD_PGPOINTCLOUD_TESTS=OFF \
-        -DWITH_LAZPERF=ON \
         -DWITH_ZSTD=ON \
-        -DWITH_LASZIP=ON \
         ..
 
 RUN cd pdal/build  && \
@@ -31,8 +29,6 @@ RUN cd pdal/build  && \
 
 RUN cd pdal/build  && \
     ninja install
-
-
 
 RUN conda-pack -n pdal --dest-prefix=/opt/conda/envs/pdal -o  /tmp/env.tar && \
      mkdir /venv && cd /venv && tar xf /tmp/env.tar  && \

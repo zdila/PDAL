@@ -39,9 +39,9 @@
 #include <pdal/PointView.hpp>
 #include <pdal/StageFactory.hpp>
 #include <pdal/Streamable.hpp>
+#include <pdal/util/FileUtils.hpp>
 #include <io/LasHeader.hpp>
 #include <io/LasReader.hpp>
-#include <pdal/util/FileUtils.hpp>
 #include "Support.hpp"
 
 using namespace pdal;
@@ -92,7 +92,7 @@ TEST(LasReaderTest, header)
 
     reader.prepare(table);
     // This tests the copy ctor, too.
-    LasHeader h = reader.header();
+    const LasHeader& h = reader.header();
 
     EXPECT_EQ(h.fileSignature(), "LASF");
     EXPECT_EQ(h.fileSourceId(), 0);
@@ -117,14 +117,36 @@ TEST(LasReaderTest, header)
     EXPECT_DOUBLE_EQ(h.minY(), 848899.70);
     EXPECT_DOUBLE_EQ(h.minZ(), 406.59);
     EXPECT_EQ(h.compressed(), false);
-    EXPECT_EQ(h.compressionInfo(), "");
     EXPECT_EQ(h.pointCountByReturn(0), 925u);
-    EXPECT_EQ(h.pointCountByReturn(1), 114u);
-    EXPECT_EQ(h.pointCountByReturn(2), 21u);
-    EXPECT_EQ(h.pointCountByReturn(3), 5u);
-    EXPECT_EQ(h.pointCountByReturn(4), 0u);
+    EXPECT_EQ(h.pointCountByReturn(1), 114);
+    EXPECT_EQ(h.pointCountByReturn(2), 21);
+    EXPECT_EQ(h.pointCountByReturn(3), 5);
+    EXPECT_EQ(h.pointCountByReturn(4), 0);
 }
 
+TEST(LasReaderTest, vlr)
+{
+    Options ops1;
+    ops1.add("filename", Support::datapath("las/epsg_4326.las"));
+    ops1.add("count", 103);
+
+    LasReader reader;
+    reader.setOptions(ops1);
+
+    PointTable table;
+    reader.prepare(table);
+    reader.execute(table);
+
+    const LasHeader& h = reader.header();
+    const VlrList& vlrs = h.vlrs();
+    EXPECT_EQ(vlrs.size(), 3U);
+    EXPECT_EQ(vlrs[0].userId(), "LASF_Projection");
+    EXPECT_EQ(vlrs[0].recordId(), 34735);
+    EXPECT_EQ(vlrs[1].userId(), "LASF_Projection");
+    EXPECT_EQ(vlrs[1].recordId(), 34736);
+    EXPECT_EQ(vlrs[2].userId(), "LASF_Projection");
+    EXPECT_EQ(vlrs[2].recordId(), 34737);
+}
 
 TEST(LasReaderTest, test_sequential)
 {
@@ -163,9 +185,10 @@ static void test_a_format(const std::string& file, uint8_t majorVersion,
     reader.setOptions(ops1);
     reader.prepare(table);
 
-    EXPECT_EQ(reader.header().pointFormat(), pointFormat);
-    EXPECT_EQ(reader.header().versionMajor(), majorVersion);
-    EXPECT_EQ(reader.header().versionMinor(), minorVersion);
+    const LasHeader& h = reader.header();
+    EXPECT_EQ(h.pointFormat(), pointFormat);
+    EXPECT_EQ(h.versionMajor(), majorVersion);
+    EXPECT_EQ(h.versionMinor(), minorVersion);
 
     PointViewSet viewSet = reader.execute(table);
     EXPECT_EQ(viewSet.size(), 1u);
@@ -179,10 +202,8 @@ TEST(LasReaderTest, test_different_formats)
 {
     test_a_format("las/permutations/1.0_0.las", 1, 0, 0, 470692.440000, 4602888.900000, 16.000000, 0, 0, 0, 0);
     test_a_format("las/permutations/1.0_1.las", 1, 0, 1, 470692.440000, 4602888.900000, 16.000000, 1205902800.000000, 0, 0, 0);
-
     test_a_format("las/permutations/1.1_0.las", 1, 1, 0, 470692.440000, 4602888.900000, 16.000000, 0, 0, 0, 0);
     test_a_format("las/permutations/1.1_1.las", 1, 1, 1, 470692.440000, 4602888.900000, 16.000000, 1205902800.000000, 0, 0, 0);
-
     test_a_format("las/permutations/1.2_0.las", 1, 2, 0, 470692.440000, 4602888.900000, 16.000000, 0, 0, 0, 0);
     test_a_format("las/permutations/1.2_1.las", 1, 2, 1, 470692.440000, 4602888.900000, 16.000000, 1205902800.000000, 0, 0, 0);
     test_a_format("las/permutations/1.2_2.las", 1, 2, 2, 470692.440000, 4602888.900000, 16.000000, 0, 255, 12, 234);
@@ -267,7 +288,7 @@ TEST(LasReaderTest, testInvalidFileSignature)
     LasReader reader;
     reader.setOptions(ops1);
 
-    EXPECT_TRUE(reader.header().valid());
+    EXPECT_EQ(reader.header().fileSignature(), "LASF");
 }
 
 TEST(LasReaderTest, extraBytes)
@@ -368,7 +389,6 @@ TEST(LasReaderTest, callback)
     EXPECT_EQ(count, (point_count_t)1065);
 }
 
-#ifdef PDAL_HAVE_LAZPERF
 // LAZ files are normally written in chunks of 50,000, so a file of size
 // 110,000 ensures we read some whole chunks and a partial.
 TEST(LasReaderTest, lazperf)
@@ -413,13 +433,11 @@ TEST(LasReaderTest, lazperf)
        EXPECT_EQ(memcmp(buf1.get(), buf2.get(), pointSize), 0);
     }
 }
-#endif
 
-void streamTest(const std::string src, const std::string compression)
+void streamTest(const std::string src)
 {
     Options ops1;
     ops1.add("filename", src);
-    ops1.add("compression", compression);
 
     LasReader lasReader;
     lasReader.setOptions(ops1);
@@ -480,13 +498,8 @@ void streamTest(const std::string src, const std::string compression)
 TEST(LasReaderTest, stream)
 {
     // Compression option is ignored for non-compressed file.
-    streamTest(Support::datapath("las/autzen_trim.las"), "laszip");
-#ifdef PDAL_HAVE_LASZIP
-    streamTest(Support::datapath("laz/autzen_trim.laz"), "laszip");
-#endif
-#ifdef PDAL_HAVE_LAZPERF
-    streamTest(Support::datapath("laz/autzen_trim.laz"), "lazperf");
-#endif
+    streamTest(Support::datapath("las/autzen_trim.las"));
+    streamTest(Support::datapath("laz/autzen_trim.laz"));
 }
 
 
@@ -563,7 +576,8 @@ TEST(LasReaderTest, SyntheticPoints)
     PointViewSet viewSet = reader.execute(table);
     PointViewPtr outView = *viewSet.begin();
 
-    EXPECT_EQ(ClassLabel::CreatedNeverClassified | ClassLabel::Synthetic, outView->getFieldAs<uint8_t>(Id::Classification, 0));
+    EXPECT_EQ(ClassLabel::CreatedNeverClassified | ClassLabel::Synthetic,
+        outView->getFieldAs<uint8_t>(Id::Classification, 0));
 }
 
 TEST(LasReaderTest, Start)
@@ -590,13 +604,12 @@ TEST(LasReaderTest, Start)
         las->execute(t);
     }
 
-    auto test1 = [source, &f](const std::string& compression, int start)
+    auto test1 = [source, &f](int start)
     {
         Stage *las = f.createStage("readers.las");
         Options opts;
         opts.add("filename", source);
         opts.add("start", start);
-        opts.add("compression", compression);
         las->setOptions(opts);
 
         PointTable t;
@@ -607,13 +620,12 @@ TEST(LasReaderTest, Start)
         EXPECT_EQ(v->getFieldAs<int>(Dimension::Id::Y, 0), start + 100);
         EXPECT_EQ(v->getFieldAs<int>(Dimension::Id::Z, 0), start + 500);
     };
-    auto test2 = [source, &f](const std::string& compression)
+    auto test2 = [source, &f]()
     {
         Stage *las = f.createStage("readers.las");
         Options opts;
         opts.add("filename", source);
         opts.add("start", 70000);
-        opts.add("compression", compression);
         las->setOptions(opts);
 
         PointTable t;
@@ -622,13 +634,12 @@ TEST(LasReaderTest, Start)
         PointViewPtr v = *s.begin();
         EXPECT_EQ(v->size(), (point_count_t)0);
     };
-    auto test3 = [&f](const std::string& compression, int start, float xval, float yval, float zval)
+    auto test3 = [&f](int start, float xval, float yval, float zval)
     {
         Stage *las = f.createStage("readers.las");
         Options opts;
         opts.add("filename", Support::datapath("laz/ellipsoid.copc.laz"));
         opts.add("start", start);
-        opts.add("compression", compression);
         las->setOptions(opts);
 
         PointTable t;
@@ -642,20 +653,13 @@ TEST(LasReaderTest, Start)
 
     std::vector<int> starts {0, 49999, 50000, 62520, 2525, 69999};
     for (auto i : starts)
-        test1("laszip", i);
-    test2("laszip");
-    test3("laszip", 66271, -8242595.58, 4966706, 0.28);
-    test3("laszip", 66272, -8242746, 4966605.44, -0.28);
-    test3("laszip", 96000, -8242474.88, 4966662.72, -8.1);
-#ifdef PDAL_HAVE_LAZPERF
-    for (auto i : starts)
-        test1("lazperf", i);
-    test2("lazperf");
-    test3("lazperf", 66271, -8242595.58, 4966706, 0.28);
-    test3("lazperf", 66272, -8242746, 4966605.44, -0.28);
-    test3("lazperf", 96000, -8242474.88, 4966662.72, -8.1);
-#endif
+        test1(i);
+    test2();
+    test3(66271, -8242595.58f, 4966706.0f, 0.28f);
+    test3(66272, -8242746.0f, 4966605.44f, -0.28f);
+    test3(96000, -8242474.88f, 4966662.72f, -8.1f);
 
     // Delete the created file.
     FileUtils::deleteFile(source);
 }
+
