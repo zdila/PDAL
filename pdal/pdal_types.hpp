@@ -251,7 +251,7 @@ enum class Orientation
     DimensionMajor
 };
 
-class pdal_error : public std::runtime_error
+class PDAL_DLL pdal_error : public std::runtime_error
 {
 public:
     inline pdal_error(std::string const& msg) : std::runtime_error(msg)

@@ -31,7 +31,7 @@
 namespace pdal
 {
 
-class arg_error
+class PDAL_DLL arg_error
 {
 public:
     arg_error(const std::string& error) : m_error(error)
@@ -44,7 +44,7 @@ public:
 };
 
 // Specifically, an error in the argument's value.
-class arg_val_error : public arg_error
+class PDAL_DLL arg_val_error : public arg_error
 {
 public:
     arg_val_error(const std::string& error) : arg_error(error)

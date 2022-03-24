@@ -142,10 +142,6 @@ include(${PDAL_CMAKE_DIR}/openssl.cmake) # Optional
 # generate the pdal_features.hpp header
 #------------------------------------------------------------------------------
 
-# from http://stackoverflow.com/questions/1435953/how-can-i-pass-git-sha1-to-compiler-as-definition-using-cmake
-include(GetGitRevisionDescription)
-get_git_head_revision(GIT_REFSPEC GIT_SHA1)
-
 # needs to come before configuration of pdal_features
 if(APPLE)
     option(PDAL_BUNDLE "Create PDAL as Application Bundle on OSX" FALSE)

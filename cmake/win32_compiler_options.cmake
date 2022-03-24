@@ -1,3 +1,6 @@
+function(pdal_lib_compile_settings target)
+    pdal_target_compile_settings(${target})
+endfunction()
 #
 # We assume you're using MSVC if you're on WIN32.
 #
