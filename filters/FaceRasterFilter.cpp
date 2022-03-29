@@ -59,12 +59,45 @@ std::string FaceRasterFilter::getName() const
 FaceRasterFilter::FaceRasterFilter() : m_limits(new RasterLimits)
 {}
 
+std::istream& operator>>(std::istream& in, FaceRasterFilter::Mode& mode)
+{
+    std::string s;
+    in >> s;
+
+    s = Utils::tolower(s);
+    if (s == "elevation")
+        mode = FaceRasterFilter::Mode::Elevation;
+    else if (s == "hillshading")
+        mode = FaceRasterFilter::Mode::Hillshading;
+    else
+        in.setstate(std::ios_base::failbit);
+    return in;
+}
+
+std::ostream& operator<<(std::ostream& out, const FaceRasterFilter::Mode& mode)
+{
+    switch (mode)
+    {
+    case FaceRasterFilter::Mode::Elevation:
+        out << "elevation";
+    case FaceRasterFilter::Mode::Hillshading:
+        out << "hillshading";
+    }
+    return out;
+}
 
 void FaceRasterFilter::addArgs(ProgramArgs& args)
 {
     m_limits->addArgs(args);
     args.add("mesh", "Mesh name", m_meshName);
     args.add("nodata", "No data value", m_noData, std::numeric_limits<double>::quiet_NaN());
+    args.add("mode", "Output mode - elevation or hillshading", m_mode, Mode::Elevation);
+    args.add("xFactor", "X-scaling factor for hillshading", m_xFactor, 1.0);
+    args.add("yFactor", "Y-scaling factor for hillshading", m_yFactor, 1.0);
+    args.add("zFactor", "Z-scaling factor for hillshading", m_zFactor, 1.0);
+    args.add("azimuth", "Azimuth of light source in degrees for hillshading", m_azimuth, 315.0);
+    args.add("altitude", "Altitude of light source in degrees for hillshading", m_altitude, 45.0);
+    args.add("hillShadeRange", "Max value of hillshading ouput values", m_hillShadeRange, 255.0);
 }
 
 void FaceRasterFilter::prepared(PointTableRef)
@@ -73,6 +106,11 @@ void FaceRasterFilter::prepared(PointTableRef)
     if (cnt != 0 && cnt != 4)
         throwError("Must specify all or none of 'origin_x', 'origin_y', 'width' and 'height'.");
     m_computeLimits = (cnt == 0);
+
+    double s = sin(m_altitude / 180.0 * M_PI);
+    m_rx = s * sin(m_azimuth / 180.0 * M_PI);
+    m_ry = s * cos(m_azimuth / 180.0 * M_PI);
+    m_rz = cos(m_altitude / 180.0 * M_PI);
 }
 
 
@@ -136,6 +174,23 @@ void FaceRasterFilter::filter(PointView& v)
         ay = Utils::clamp(ay, 0, (int)m_limits->height);
         by = Utils::clamp(by, 0, (int)m_limits->height);
 
+        double shade;
+
+        if (m_mode == Mode::Hillshading)
+        {
+            double nx = (y2 - y1) * (z3 - z1) - (y3 - y1) * (z2 - z1) * m_xFactor;
+            double ny = (z2 - z1) * (x3 - x1) - (x2 - x1) * (z3 - z1) * m_yFactor;
+            double nz = ((x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1)) * m_zFactor;
+
+            double len = sqrt(nx * nx + ny * ny + nz * nz);
+
+            nx /= len;
+            ny /= len;
+            nz /= len;
+
+            shade = m_hillShadeRange - abs(acos(nx * m_rx + ny * m_ry + nz * m_rz)) / M_PI * m_hillShadeRange;
+        }
+
         for (int xi = ax; xi < bx; ++xi)
             for (int yi = ay; yi < by; ++yi)
             {
@@ -145,7 +200,7 @@ void FaceRasterFilter::filter(PointView& v)
                 double val = math::barycentricInterpolation(x1, y1, z1,
                     x2, y2, z2, x3, y3, z3, x, y);
                 if (val != std::numeric_limits<double>::infinity())
-                    raster->at(xi, yi) = val;
+                    raster->at(xi, yi) = m_mode == Mode::Elevation ? val : std::isnan(raster->at(xi, yi)) ? shade : ((raster->at(xi, yi) + shade) / 2.0);
             }
     }
 }

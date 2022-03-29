@@ -54,6 +54,12 @@ public:
     std::string getName() const;
 
 private:
+    enum class Mode
+    {
+        Elevation,
+        Hillshading
+    };
+
     virtual void addArgs(ProgramArgs& args);
     virtual void prepared(PointTableRef);
     virtual void filter(PointView& view);
@@ -62,6 +68,21 @@ private:
     std::string m_meshName;
     double m_noData;
     bool m_computeLimits;
+    Mode m_mode;
+    double m_hillShadeRange;
+    double m_azimuth;
+    double m_altitude;
+    double m_xFactor;
+    double m_yFactor;
+    double m_zFactor;
+    double m_rx;
+    double m_ry;
+    double m_rz;
+
+    friend std::istream& operator>>(std::istream& in,
+        FaceRasterFilter::Mode& mode);
+    friend std::ostream& operator<<(std::ostream& in,
+        const FaceRasterFilter::Mode& mode);
 };
 
 } // namespace pdal
