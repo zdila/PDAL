@@ -89,8 +89,10 @@ void DelaunayFilter::filter(PointView& pointView)
     delaunator::Delaunator triangulation(delaunayPoints);
 
     for (std::size_t i = 0; i < triangulation.triangles.size(); i += 3)
-        mesh->add(triangulation.triangles[i+2], triangulation.triangles[i+1],
-            triangulation.triangles[i]);
+        mesh->add(triangulation.triangles[i+2], triangulation.triangles[i+1], triangulation.triangles[i],
+            triangulation.halfedges[i+2], triangulation.halfedges[i+1], triangulation.halfedges[i]);
+
+
 }
 
 } // namespace pdal

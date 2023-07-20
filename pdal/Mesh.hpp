@@ -43,12 +43,18 @@ namespace pdal
 class PDAL_DLL Triangle
 {
 public:
-    Triangle(PointId a, PointId b, PointId c) : m_a(a), m_b(b), m_c(c)
+    Triangle(PointId a, PointId b, PointId c) : m_a(a), m_b(b), m_c(c), m_ia(-1), m_ib(-1), m_ic(-1)
+    {}
+
+    Triangle(PointId a, PointId b, PointId c, std::size_t ia, std::size_t ib, std::size_t ic) : m_a(a), m_b(b), m_c(c), m_ia(ia), m_ib(ib), m_ic(ic)
     {}
 
     PointId m_a;
     PointId m_b;
     PointId m_c;
+    std::size_t m_ia;
+    std::size_t m_ib;
+    std::size_t m_ic;
 
     friend bool operator == (const Triangle& a, const Triangle& b);
 };
@@ -85,6 +91,8 @@ public:
         { return m_index.size(); }
     void PDAL_DLL add(PointId a, PointId b, PointId c)
         { m_index.emplace_back(a, b, c); }
+    void PDAL_DLL add(PointId a, PointId b, PointId c, std::size_t ia, std::size_t ib, std::size_t ic)
+        { m_index.emplace_back(a, b, c, ia, ib, ic); }
     const PDAL_DLL Triangle& operator[](PointId id) const
         { return m_index[id]; }
     const_iterator begin() const
